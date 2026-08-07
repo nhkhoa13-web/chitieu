@@ -65,12 +65,19 @@
   html[data-theme="light"] .month-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
   .month-panel.show{ display:block; }
   .month-list{ display:flex; flex-direction:column; gap:3px; max-height:220px; overflow-y:auto; margin-bottom:10px; }
+  .month-item-row{ display:flex; align-items:stretch; gap:2px; }
   .month-item{
-    text-align:left; background:transparent; border:none; border-radius:9px; padding:9px 11px;
+    flex:1; min-width:0; text-align:left; background:transparent; border:none; border-radius:9px; padding:9px 11px;
     font-size:13px; color:var(--text-mid); cursor:pointer; font-family:inherit; font-family:var(--mono);
   }
   .month-item:hover{ background:var(--surface3); }
   .month-item.active{ background:rgba(41,231,240,0.14); color:var(--chong-soft); font-weight:700; }
+  .month-delete-btn{
+    flex-shrink:0; width:30px; background:transparent; border:none; border-radius:9px; cursor:pointer;
+    color:var(--text-faint); display:flex; align-items:center; justify-content:center;
+  }
+  .month-delete-btn:hover{ background:rgba(255,107,129,0.14); color:var(--vk-soft); }
+  .month-delete-btn svg{ width:15px; height:15px; }
   .month-add-row{ display:flex; gap:6px; border-top:1px solid var(--border); padding-top:10px; }
   .month-add-row select{ flex:1; min-width:0; padding:8px 9px; font-size:13px; }
   .month-add-row button{ padding:8px 12px; font-size:12.5px; white-space:nowrap; }
@@ -595,31 +602,31 @@
   const legacyToId = Object.fromEntries(CATS.map(c => [c.legacy, c.id]));
 
   // ---------- Seed data ----------
-  const RAW_SEED = [
-    [1, "cf + gà nướng", 35, "-"],
-    [2, "bún + cf + cơm", 75, "Ck tính"],
-    [3, "phở + chơi + xe", 444, "Ck tính"],
-    [5, "nước", 22, "CK tính chung"],
-    [6, "cf", 34, "Vk tính"],
-    [7, "cf + gà nướng", 34, "Vk thiếu"],
-    [8, "bún + cf + cơm", 34, "Vk tính chung"],
-    [9, "phở + chơi + xe", 34, "-"],
-    [10, "nước", 34, "Ck tính"],
-  ];
+  // Không còn dùng dữ liệu mẫu nữa — dữ liệu thật lấy từ Google Sheet mỗi khi bấm "Đồng bộ ngay".
+  const RAW_SEED = [];
   const SEED = RAW_SEED.map(([day, name, amount, legacy], i) => ({
     id: "seed_" + i, day, name, amount, category: legacyToId[legacy] || "ca_nhan", updatedAt: 0,
   }));
 
-  const DEFAULT_MONTH_KEY = "2026-07";
-  const STORAGE_KEY = "so_chi_tieu:v2";
-  const OLD_STORAGE_KEY = "so_chi_tieu:t7_2026";
+  // Tháng mặc định khi CHƯA TỪNG mở app lần nào (chưa có gì trong cache) -> dùng đúng tháng hiện tại
+  // theo ngày hệ thống, thay vì hardcode 1 tháng cố định.
+  function currentSystemMonthKey(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  const DEFAULT_MONTH_KEY = currentSystemMonthKey();
 
   // ---------- Google Sheet sync config ----------
   // 1) Dán URL Web App (Apps Script) bạn deploy vào SHEET_SYNC_URL.
   // 2) Đặt SHEET_SYNC_TOKEN trùng với giá trị SECRET_TOKEN trong file Code.gs.
-  // Để trống SHEET_SYNC_URL nếu chưa muốn bật đồng bộ.
+  // Google Sheet là nguồn dữ liệu chính — localStorage chỉ dùng làm LỚP ĐỆM AN TOÀN
+  // (đề phòng mất mạng giữa chừng), không phải nơi lưu trữ chính thức.
   const SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbxCoDLzaz33EDqGHaP-1Q82_QLDwDzRNd7b_xV_Q47kxRG4wYIq1DBJweEEFPRXZ5dW/exec";
   const SHEET_SYNC_TOKEN = "chitieu-2026-khoa2k";
+  const CACHE_KEY = "so_chi_tieu:cache:v1";
+  const QUEUE_KEY = "so_chi_tieu:queue:v1";
+  const LAST_SYNC_KEY = "so_chi_tieu:last_sync_at";
+  const STALE_SYNC_MS = 15 * 60 * 1000; // 15 phút — quá thời gian này sẽ cảnh báo nhẹ
 
   // ---------- Helpers ----------
   const money = (thousands) => new Intl.NumberFormat("vi-VN").format(Math.round((thousands||0)*1000)) + " \u20ab";
@@ -639,61 +646,77 @@
   }
 
   // ---------- State ----------
+  // Google Sheet vẫn là nguồn dữ liệu chính (bấm "Đồng bộ ngay" để lấy bản mới nhất).
+  // localStorage ở đây CHỈ là lớp đệm an toàn: lưu lại những gì đang có trong phiên làm
+  // việc + hàng đợi các thay đổi chưa chắc đã lên được Sheet, để không mất trắng nếu
+  // mất mạng/đóng tab giữa chừng — không dùng để merge hay thay thế việc đồng bộ.
   let monthsData = { [DEFAULT_MONTH_KEY]: SEED.slice() };
   let currentMonthKey = DEFAULT_MONTH_KEY;
   let entries = monthsData[currentMonthKey];
   let editingId = null;
-  let saveTimer = null;
-  // Bản ghi nhớ "lần đồng bộ trước server có gì" cho từng tháng, dùng để phát hiện
-  // mục nào đã bị xoá ở máy khác / mục nào mới thêm chưa từng đồng bộ.
-  let remoteSnapshots = {};
 
-  function commit(){ monthsData[currentMonthKey] = entries; }
+  function commit(){ monthsData[currentMonthKey] = entries; saveCache(); }
 
-  // ---------- Persistence (localStorage — hoạt động độc lập, không cần Claude) ----------
-  async function loadData(){
+  function saveCache(){
     try{
-      const raw = localStorage.getItem(STORAGE_KEY);
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ months: monthsData, current: currentMonthKey }));
+    }catch(e){ /* hết dung lượng hoặc trình duyệt chặn — bỏ qua, không ảnh hưởng hoạt động chính */ }
+  }
+  function loadCache(){
+    try{
+      const raw = localStorage.getItem(CACHE_KEY);
+      if(!raw) return false;
+      const parsed = JSON.parse(raw);
+      if(parsed && parsed.months && typeof parsed.months === "object"){
+        monthsData = parsed.months;
+        if(parsed.current && monthsData[parsed.current]) currentMonthKey = parsed.current;
+        return true;
+      }
+    }catch(e){ /* cache hỏng — bỏ qua, dùng dữ liệu mặc định */ }
+    return false;
+  }
+  function saveQueue(){
+    try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(syncQueue)); }catch(e){ /* ignore */ }
+  }
+  function loadQueue(){
+    try{
+      const raw = localStorage.getItem(QUEUE_KEY);
       if(raw){
         const parsed = JSON.parse(raw);
-        if(parsed && typeof parsed === "object" && parsed.months && typeof parsed.months === "object"){
-          monthsData = parsed.months;
-          if(parsed.current && monthsData[parsed.current]) currentMonthKey = parsed.current;
-          if(parsed.remoteSnapshots && typeof parsed.remoteSnapshots === "object") remoteSnapshots = parsed.remoteSnapshots;
-        }
-      }else{
-        // migrate from the older single-month version, if present
-        try{
-          const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-          if(oldRaw){
-            const parsedOld = JSON.parse(oldRaw);
-            if(Array.isArray(parsedOld) && parsedOld.length) monthsData[DEFAULT_MONTH_KEY] = parsedOld;
-          }
-        }catch(e2){ /* nothing to migrate */ }
+        if(Array.isArray(parsed)) syncQueue = parsed;
       }
-    }catch(e){ /* keep seed defaults */ }
+    }catch(e){ /* ignore */ }
+  }
+  function markSynced(){
+    try{ localStorage.setItem(LAST_SYNC_KEY, String(Date.now())); }catch(e){ /* ignore */ }
+  }
+  function getLastSyncAt(){
+    try{
+      const raw = localStorage.getItem(LAST_SYNC_KEY);
+      return raw ? Number(raw) : null;
+    }catch(e){ return null; }
+  }
 
-    if(!monthsData[currentMonthKey]){
-      const keys = Object.keys(monthsData);
-      currentMonthKey = keys.length ? keys.sort().reverse()[0] : DEFAULT_MONTH_KEY;
-    }
-    if(!monthsData[currentMonthKey]) monthsData[currentMonthKey] = [];
-    entries = monthsData[currentMonthKey];
+  // ---------- Khởi tạo ----------
+  async function loadData(){
+    const hadCache = loadCache();
+    loadQueue();
     renderMonthUI();
     render();
-    if(SHEET_SYNC_URL){
-      setSyncStatus("Chưa đồng bộ trong phiên này", false);
-      pullAndMergeMonth(currentMonthKey);
+    if(!SHEET_SYNC_URL){
+      setSyncStatus("Chưa cấu hình đồng bộ Google Sheet", true);
+      return;
     }
-  }
-  function scheduleSave(){
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ months: monthsData, current: currentMonthKey, remoteSnapshots }));
-      }
-      catch(e){ console.error("Không lưu được dữ liệu", e); showErrorBanner("Không lưu được dữ liệu local: " + e.message); }
-    }, 400);
+    if(syncQueue.length){
+      // Có thay đổi từ phiên trước chưa chắc đã lên được Sheet (ví dụ mất mạng giữa chừng) -> thử đẩy lại ngay.
+      setSyncStatus("Đang gửi nốt " + syncQueue.length + " thay đổi còn treo…", false);
+      processSyncQueue();
+    }else if(hadCache){
+      setSyncStatus("Đang xem dữ liệu đã lưu tạm — bấm \"Đồng bộ ngay\" để lấy bản mới nhất", false);
+    }else{
+      setSyncStatus("Chưa đồng bộ", false);
+    }
+    checkStaleSync();
   }
 
   // ---------- Google Sheet sync (2 chiều: pull + merge, rồi push phần chênh lệch) ----------
@@ -710,6 +733,7 @@
   function queueSync(action, entry){
     if(!SHEET_SYNC_URL) return;
     syncQueue.push({ action, monthKey: currentMonthKey, entry });
+    saveQueue();
     clearTimeout(syncQueueTimer);
     syncQueueTimer = setTimeout(processSyncQueue, 500);
   }
@@ -719,7 +743,7 @@
     setSyncStatus("Đang đồng bộ…", false);
     let hadError = false;
     while(syncQueue.length){
-      const item = syncQueue.shift();
+      const item = syncQueue[0];
       try{
         const payload = {
           token: SHEET_SYNC_TOKEN,
@@ -736,23 +760,26 @@
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
+        syncQueue.shift();
+        saveQueue(); // xong 1 mục -> cập nhật ngay hàng đợi đã lưu, tránh gửi lại nếu tải lại trang
       }catch(err){
         hadError = true;
         console.error("sync error", err);
-        break; // dừng hàng đợi, giữ trạng thái lỗi; lần thay đổi tiếp theo sẽ thử lại
+        break; // dừng hàng đợi (mục lỗi vẫn còn trong queue để thử lại lần sau), giữ trạng thái lỗi
       }
     }
     syncQueueProcessing = false;
     if(hadError){
-      setSyncStatus("Đồng bộ thất bại", true);
+      setSyncStatus("Đồng bộ thất bại — còn " + syncQueue.length + " thay đổi chưa gửi được, sẽ tự thử lại", true);
     }else{
+      markSynced();
       const now = new Date();
       setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
     }
   }
 
-  // Tải dữ liệu tháng monthKey từ Google Sheet, merge với dữ liệu local, rồi đẩy lại phần chênh lệch.
-  async function pullAndMergeMonth(monthKey, opts){
+  // Luôn tải lại đúng dữ liệu tháng monthKey từ Google Sheet và hiển thị — Sheet là nguồn dữ liệu duy nhất.
+  async function pullMonth(monthKey, opts){
     opts = opts || {};
     if(!SHEET_SYNC_URL){
       if(opts.manual) showErrorBanner("Chưa cấu hình SHEET_SYNC_URL. Xem hướng dẫn đồng bộ Google Sheet.");
@@ -770,7 +797,21 @@
       if(!res.ok || !data || data.ok !== true){
         throw new Error((data && data.error) || ("HTTP " + res.status));
       }
-      mergeRemoteIntoLocal(monthKey, Array.isArray(data.entries) ? data.entries : []);
+      const remoteEntries = (Array.isArray(data.entries) ? data.entries : [])
+        .slice()
+        .sort((a, b) => (Number(a.day) || 0) - (Number(b.day) || 0));
+      monthsData[monthKey] = remoteEntries;
+      saveCache();
+
+      if(monthKey === currentMonthKey){
+        entries = monthsData[monthKey];
+        try{
+          render();
+        }catch(err){
+          showErrorBanner("render sau khi đồng bộ: " + err.message);
+        }
+      }
+      markSynced();
       const now = new Date();
       setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
     }catch(err){
@@ -780,60 +821,19 @@
     }
   }
 
-  // So sánh dữ liệu local với dữ liệu vừa tải từ server (và với "lần đồng bộ trước" đã lưu),
-  // để quyết định: giữ bản nào, thêm mục nào, xoá mục nào — rồi đẩy phần chênh lệch lên server.
-  function mergeRemoteIntoLocal(monthKey, remoteEntries){
-    const localEntries = monthsData[monthKey] || [];
-    const snapshot = remoteSnapshots[monthKey] || [];
-    const snapshotIds = new Set(snapshot.map(en => en.id));
-    const remoteMap = new Map(remoteEntries.map(en => [en.id, en]));
-    const localMap = new Map(localEntries.map(en => [en.id, en]));
-
-    const resultMap = new Map();
-    const toPush = [];
-
-    localMap.forEach((localEn, id) => {
-      const remoteEn = remoteMap.get(id);
-      if(remoteEn){
-        const localTime = Number(localEn.updatedAt) || 0;
-        const remoteTime = Number(remoteEn.updatedAt) || 0;
-        if(remoteTime > localTime){
-          resultMap.set(id, remoteEn); // bản trên server mới hơn -> lấy bản đó
-        }else{
-          resultMap.set(id, localEn);
-          if(localTime > remoteTime) toPush.push({ action: "updateEntry", entry: localEn }); // bản local mới hơn -> đẩy lên
-        }
-      }else if(snapshotIds.has(id)){
-        // Trước đây có trên server, giờ không còn -> đã bị xoá từ máy khác, bỏ luôn ở local.
-      }else{
-        // Chưa từng đồng bộ -> giữ lại, đẩy lên như một mục mới.
-        resultMap.set(id, localEn);
-        toPush.push({ action: "addEntry", entry: localEn });
-      }
-    });
-
-    remoteMap.forEach((remoteEn, id) => {
-      if(localMap.has(id)) return;
-      if(snapshotIds.has(id)){
-        // Máy này đã xoá mục này trước đó nhưng server chưa kịp cập nhật -> xoá lại trên server, không khôi phục ở local.
-        toPush.push({ action: "deleteEntry", entry: { id } });
-      }else{
-        resultMap.set(id, remoteEn); // mục mới thêm từ máy khác
-      }
-    });
-
-    const merged = Array.from(resultMap.values()).sort((a, b) => (Number(a.day) || 0) - (Number(b.day) || 0));
-    monthsData[monthKey] = merged;
-    remoteSnapshots[monthKey] = merged.slice();
-
-    if(monthKey === currentMonthKey){
-      entries = monthsData[monthKey];
-      render();
+  // Cảnh báo nhẹ nếu đã lâu chưa đồng bộ thành công lần nào — không tự tải dữ liệu,
+  // chỉ nhắc để bạn chủ động bấm "Đồng bộ ngay".
+  function checkStaleSync(){
+    if(!SHEET_SYNC_URL) return;
+    if(syncQueueProcessing) return;
+    const last = getLastSyncAt();
+    if(!last) return; // chưa từng đồng bộ lần nào -> giữ nguyên thông báo hiện tại, không ghi đè
+    const mins = Math.floor((Date.now() - last) / 60000);
+    if(mins * 60000 >= STALE_SYNC_MS){
+      setSyncStatus("⚠️ Đã " + mins + " phút chưa đồng bộ — bấm \"Đồng bộ ngay\" để chắc chắn dữ liệu mới nhất", true);
     }
-    scheduleSave();
-
-    toPush.forEach(item => queueSync(item.action, item.entry));
   }
+  setInterval(checkStaleSync, 60000);
 
   // ---------- Month switching ----------
   function renderMonthUI(){
@@ -843,19 +843,24 @@
     if(!list) return;
     const keys = Object.keys(monthsData).sort().reverse();
     list.innerHTML = keys.map(k =>
-      '<button type="button" class="month-item' + (k === currentMonthKey ? " active" : "") + '" data-month="' + k + '">' +
-        escapeHtml(monthLabel(k)) +
-      '</button>'
+      '<div class="month-item-row">' +
+        '<button type="button" class="month-item' + (k === currentMonthKey ? " active" : "") + '" data-month="' + k + '">' +
+          escapeHtml(monthLabel(k)) +
+        '</button>' +
+        '<button type="button" class="month-delete-btn" data-delete-month="' + k + '" aria-label="Xoá ' + escapeHtml(monthLabel(k)) + '">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>' +
+        '</button>' +
+      '</div>'
     ).join("");
   }
   function switchMonth(key){
     if(!monthsData[key]) monthsData[key] = [];
     currentMonthKey = key;
     entries = monthsData[key];
+    saveCache(); // nhớ lại tháng đang xem, để lần mở app sau tự mở đúng tháng này
     renderMonthUI();
     render();
-    scheduleSave();
-    if(SHEET_SYNC_URL) pullAndMergeMonth(key);
+    // Không tự tải từ Google Sheet khi chuyển tháng nữa — chỉ tải khi bấm "Đồng bộ ngay".
   }
 
   // ---------- Derived computations ----------
@@ -1003,7 +1008,7 @@
       return;
     }
     body.innerHTML = sorted.map(e => {
-      const c = catById[e.category];
+      const c = catById[e.category] || catById.ca_nhan;
       return (
         '<div class="t-row" data-id="' + e.id + '">' +
           '<span class="t-day">' + e.day + '</span>' +
@@ -1021,6 +1026,29 @@
         '</div>'
       );
     }).join("");
+  }
+
+  // Đẩy toàn bộ dữ liệu 1 hoặc nhiều tháng lên Sheet (ghi đè) — dùng khi khôi phục từ file backup JSON.
+  async function pushFullMonths(monthsObj){
+    for(const monthKey of Object.keys(monthsObj)){
+      try{
+        const payload = { token: SHEET_SYNC_TOKEN, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
+        const res = await fetch(SHEET_SYNC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => null);
+        if(!res.ok || !data || data.ok !== true){
+          throw new Error((data && data.error) || ("HTTP " + res.status));
+        }
+      }catch(err){
+        showErrorBanner("Đẩy dữ liệu khôi phục lên Sheet thất bại (tháng " + monthKey + "): " + err.message);
+      }
+    }
+    markSynced();
+    const now = new Date();
+    setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
   }
 
   // ---------- Modal / form ----------
@@ -1119,7 +1147,6 @@
               commit();
               closeModal();
               render();
-              scheduleSave();
               queueSync("updateEntry", updated);
             }catch(err){ showErrorBanner("save-edit: " + err.message); }
           }
@@ -1130,7 +1157,6 @@
         commit();
         closeModal();
         render();
-        scheduleSave();
         queueSync("addEntry", newEntry);
       }
     }catch(err){ showErrorBanner("submit: " + err.message); }
@@ -1167,7 +1193,6 @@
               entries = entries.filter(en => en.id !== id);
               commit();
               render();
-              scheduleSave();
               queueSync("deleteEntry", { id });
             }catch(err){ showErrorBanner("delete: " + err.message); }
           }
@@ -1256,9 +1281,15 @@
             monthsData = parsed.months;
             currentMonthKey = (parsed.current && monthsData[parsed.current]) ? parsed.current : Object.keys(monthsData).sort().reverse()[0];
             entries = monthsData[currentMonthKey] || [];
+            saveCache();
             renderMonthUI();
             render();
-            scheduleSave();
+            if(SHEET_SYNC_URL){
+              setSyncStatus("Đang đẩy dữ liệu khôi phục lên Google Sheet…", false);
+              pushFullMonths(monthsData);
+            }else{
+              showErrorBanner("Chưa cấu hình Google Sheet — dữ liệu khôi phục chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
+            }
           }
         );
       }catch(err){ showErrorBanner("import: " + err.message); }
@@ -1276,7 +1307,7 @@
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {
     closeMenuPanel();
-    pullAndMergeMonth(currentMonthKey, { manual: true });
+    pullMonth(currentMonthKey, { manual: true });
   });
 
   // ---------- Options menu wiring ----------
@@ -1305,11 +1336,66 @@
     if(opening) populateNewMonthPickers();
   });
   document.getElementById("monthList").addEventListener("click", (e) => {
+    const delBtn = e.target.closest(".month-delete-btn");
+    if(delBtn){
+      e.stopPropagation();
+      deleteMonth(delBtn.dataset.deleteMonth);
+      return;
+    }
     const item = e.target.closest(".month-item");
     if(!item) return;
     switchMonth(item.dataset.month);
     closeMonthPanel();
   });
+  function deleteMonth(key){
+    if(!monthsData[key]) return;
+    const count = (monthsData[key] || []).length;
+    openConfirm(
+      "Xoá " + monthLabel(key) + "?",
+      "Toàn bộ " + count + " khoản chi của " + monthLabel(key) + " sẽ bị xoá" +
+        (SHEET_SYNC_URL ? " (cả trên Google Sheet)" : "") + ". Không thể hoàn tác.",
+      "Xoá tháng",
+      true,
+      async () => {
+        try{
+          delete monthsData[key];
+          if(key === currentMonthKey){
+            const remainingKeys = Object.keys(monthsData).sort().reverse();
+            if(remainingKeys.length){
+              currentMonthKey = remainingKeys[0];
+            }else{
+              currentMonthKey = key;
+              monthsData[key] = [];
+            }
+            entries = monthsData[currentMonthKey];
+          }
+          saveCache();
+          renderMonthUI();
+          render();
+          closeMonthPanel();
+          if(SHEET_SYNC_URL){
+            setSyncStatus("Đang xoá tháng trên Google Sheet…", false);
+            const payload = { token: SHEET_SYNC_TOKEN, action: "deleteMonth", monthKey: key };
+            const res = await fetch(SHEET_SYNC_URL, {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => null);
+            if(!res.ok || !data || data.ok !== true){
+              throw new Error((data && data.error) || ("HTTP " + res.status));
+            }
+            markSynced();
+            const now = new Date();
+            setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
+          }
+        }catch(err){
+          setSyncStatus("Đồng bộ thất bại", true);
+          showErrorBanner("Xoá tháng trên Sheet thất bại: " + err.message);
+        }
+      }
+    );
+  }
   function populateNewMonthPickers(){
     const monthSelect = document.getElementById("newMonthSelect");
     const yearSelect = document.getElementById("newYearSelect");
