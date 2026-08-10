@@ -349,14 +349,48 @@
   label.field{ display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text-muted); font-weight:500; }
   .field-row{ display:flex; gap:10px; }
   .field-row .field{ flex:1; min-width:0; }
-  .field-row .field-amount, .field-row .field-day{ flex:0 1 38%; }
+  .field-row .field-amount, .field-row .field-day{ flex:0 1 42%; }
   input, select{
     background:var(--bg); border:1px solid var(--border2); border-radius:9px; padding:11px; color:var(--text);
     font-size:16px; font-family:inherit; outline:none;
   }
   .select-hint{ font-size:11px; color:var(--text-faint); font-weight:400; }
+  .day-picker{ position:relative; }
+  .day-trigger{
+    width:100%; background:var(--bg); border:1px solid var(--border2); border-radius:9px; padding:11px;
+    color:var(--text); font-size:16px; font-family:inherit; display:flex; align-items:center; justify-content:space-between;
+    gap:6px; cursor:pointer; text-align:left;
+  }
+  .day-trigger .chev{ width:15px; height:15px; color:var(--text-muted); flex-shrink:0; transition:transform .2s ease; }
+  .day-trigger.open .chev{ transform:rotate(180deg); }
+  .day-panel{
+    position:absolute; top:calc(100% + 8px); left:0; width:250px; max-width:80vw;
+    background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:12px;
+    z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
+  }
+  html[data-theme="light"] .day-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
+  .day-panel.show{ display:block; }
+  .day-panel-title{ font-family:var(--mono); font-size:12px; font-weight:700; color:var(--text-mid); text-align:center; margin-bottom:9px; }
+  .day-grid-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px; }
+  .day-grid-weekdays span{ text-align:center; font-size:10px; color:var(--text-faint); font-weight:600; }
+  .day-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .day-cell{
+    aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:8px; border:none;
+    background:transparent; color:var(--text-mid); font-family:var(--mono); font-size:12.5px; cursor:pointer; padding:0;
+  }
+  .day-cell:hover{ background:var(--surface3); }
+  .day-cell.active{ background:rgba(var(--chong-rgb),0.18); color:var(--chong-soft); font-weight:700; }
+  .day-cell.today:not(.active){ box-shadow:inset 0 0 0 1px var(--border2); color:var(--text-hi); }
+  .day-cell.empty{ cursor:default; }
+  .day-cell.empty:hover{ background:transparent; }
+  .day-trigger-sm{ padding:8px 12px; font-size:13px; border-radius:10px; background:var(--surface3); border-color:var(--border); }
+  .day-panel-clear{
+    width:100%; margin-top:9px; padding:8px; border-radius:9px; border:1px solid var(--border);
+    background:transparent; color:var(--text-mid); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  }
+  .day-panel-clear:hover{ background:var(--surface3); color:var(--text); }
   .field-required{ color:#FF4D6D; font-weight:700; }
-  .field-label{ display:inline-flex; align-items:baseline; gap:2px; }
+  .field-label{ display:inline-flex; align-items:baseline; gap:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .confirm-message{ font-size:13.5px; color:var(--text-mid); line-height:1.55; margin:0; }
   .cat-detail-modal{ max-width:420px; }
   .cat-detail-heading{ display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
@@ -583,9 +617,18 @@
       </div>
       <div class="ledger-filter-row">
         <input type="text" id="ledgerSearch" class="ledger-filter-input" placeholder="Tìm theo tên khoản chi…" />
-        <select id="ledgerDayFilter" class="ledger-filter-select ledger-filter-day">
-          <option value="">Tất cả ngày</option>
-        </select>
+        <div class="day-picker ledger-filter-day" id="ledgerDayPicker">
+          <button type="button" class="day-trigger day-trigger-sm" id="ledgerDayTrigger">
+            <span id="ledgerDayTriggerLabel">Tất cả ngày</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="day-panel" id="ledgerDayPanel">
+            <div class="day-panel-title" id="ledgerDayPanelTitle"></div>
+            <div class="day-grid-weekdays"><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span></div>
+            <div class="day-grid" id="ledgerDayGrid"></div>
+            <button type="button" class="day-panel-clear" id="ledgerDayClear">Tất cả ngày</button>
+          </div>
+        </div>
         <select id="ledgerCatFilter" class="ledger-filter-select">
           <option value="">Tất cả danh mục</option>
         </select>
@@ -619,7 +662,18 @@
       <div class="field-row">
         <label class="field field-day">
           <span class="field-label">Ngày <span class="field-required">*</span></span>
-          <select id="fDay" required></select>
+          <div class="day-picker" id="dayPicker">
+            <button type="button" class="day-trigger" id="dayTrigger">
+              <span id="dayTriggerLabel">Ngày 1</span>
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <select id="fDay" required style="display:none"></select>
+            <div class="day-panel" id="dayPanel">
+              <div class="day-panel-title" id="dayPanelTitle"></div>
+              <div class="day-grid-weekdays"><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span></div>
+              <div class="day-grid" id="dayGrid"></div>
+            </div>
+          </div>
         </label>
         <label class="field">
           <span class="field-label">Loại chi tiêu <span class="field-required">*</span></span>
@@ -633,7 +687,7 @@
           <input type="text" id="fName" placeholder="vd. cf + gà nướng" required />
         </label>
         <label class="field field-amount">
-          <span class="field-label">Số tiền (nghìn đồng) <span class="field-required">*</span></span>
+          <span class="field-label">Số tiền (nghìn) <span class="field-required">*</span></span>
           <input type="number" id="fAmount" min="0" step="1" placeholder="vd. 35" required />
         </label>
       </div>
@@ -808,6 +862,29 @@
     const m = parseInt(parts[1], 10);
     if(!y || !m) return 31;
     return new Date(y, m, 0).getDate(); // ngày cuối cùng của tháng m (1-12)
+  }
+  function buildDayCalendar(monthKey, selectedDay, gridId, titleId){
+    gridId = gridId || "dayGrid";
+    titleId = titleId || "dayPanelTitle";
+    const parts = String(monthKey).split("-");
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const total = daysInMonthKey(monthKey);
+    const dow = new Date(y, (m || 1) - 1, 1).getDay(); // 0=CN..6=T7
+    const leadingEmpty = (dow + 6) % 7; // đưa về Thứ 2 = 0 ... CN = 6
+    const now = new Date();
+    const isRealCurrentMonth = now.getFullYear() === y && (now.getMonth() + 1) === m;
+    const todayDay = now.getDate();
+    let html = "";
+    for(let i = 0; i < leadingEmpty; i++) html += '<span class="day-cell empty"></span>';
+    for(let d = 1; d <= total; d++){
+      const cls = ["day-cell"];
+      if(d === selectedDay) cls.push("active");
+      if(isRealCurrentMonth && d === todayDay) cls.push("today");
+      html += '<button type="button" class="' + cls.join(" ") + '" data-day="' + d + '">' + d + '</button>';
+    }
+    document.getElementById(gridId).innerHTML = html;
+    document.getElementById(titleId).textContent = monthLabel(monthKey);
   }
 
   // ---------- State ----------
@@ -1170,14 +1247,10 @@
   let ledgerFilterDay = "";
 
   function populateLedgerDayFilter(){
-    const sel = document.getElementById("ledgerDayFilter");
-    if(!sel) return;
-    const total = daysInMonthKey(currentMonthKey);
-    const opts = ['<option value="">Tất cả ngày</option>'];
-    for(let d = 1; d <= total; d++) opts.push('<option value="' + d + '">Ngày ' + d + '</option>');
-    sel.innerHTML = opts.join("");
-    sel.value = "";
+    if(!document.getElementById("ledgerDayGrid")) return;
     ledgerFilterDay = "";
+    document.getElementById("ledgerDayTriggerLabel").textContent = "Tất cả ngày";
+    buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
   }
 
   function renderLedger(){
@@ -1272,6 +1345,8 @@
     fDay.innerHTML = opts.join("");
     const day = Math.max(1, Math.min(total, Number(selectedDay) || new Date().getDate()));
     fDay.value = String(day);
+    document.getElementById("dayTriggerLabel").textContent = "Ngày " + day;
+    buildDayCalendar(currentMonthKey, day);
   }
   function openModal(mode, entry){
     editingId = entry ? entry.id : null;
@@ -1289,6 +1364,7 @@
     modalOverlay.classList.remove("show");
     editingId = null;
     entryForm.reset();
+    closeDayPanel();
   }
 
   document.getElementById("addBtn").addEventListener("click", () => openModal("add", null));
@@ -1644,6 +1720,28 @@
     menuPanel.classList.toggle("show");
   });
 
+  // ---------- Day picker wiring ----------
+  const dayTriggerBtn = document.getElementById("dayTrigger");
+  const dayPanelEl = document.getElementById("dayPanel");
+  function closeDayPanel(){
+    dayPanelEl.classList.remove("show");
+    dayTriggerBtn.classList.remove("open");
+  }
+  dayTriggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dayPanelEl.classList.toggle("show");
+    dayTriggerBtn.classList.toggle("open");
+  });
+  document.getElementById("dayGrid").addEventListener("click", (e) => {
+    const cell = e.target.closest(".day-cell");
+    if(!cell || cell.classList.contains("empty")) return;
+    const d = cell.dataset.day;
+    fDay.value = d;
+    document.getElementById("dayTriggerLabel").textContent = "Ngày " + d;
+    buildDayCalendar(currentMonthKey, Number(d));
+    closeDayPanel();
+  });
+
   // ---------- Month switcher wiring ----------
   const monthTrigger = document.getElementById("monthTrigger");
   const monthPanel = document.getElementById("monthPanel");
@@ -1749,6 +1847,8 @@
   document.addEventListener("click", (e) => {
     if(!e.target.closest(".month-switcher")) closeMonthPanel();
     if(!e.target.closest(".menu-switcher")) closeMenuPanel();
+    if(!e.target.closest("#dayPicker")) closeDayPanel();
+    if(!e.target.closest("#ledgerDayPicker")) closeLedgerDayPanel();
   });
 
   document.getElementById("balanceSpotlight").addEventListener("click", () => {
@@ -1776,8 +1876,32 @@
     ledgerFilterCat = e.target.value;
     renderLedger();
   });
-  document.getElementById("ledgerDayFilter").addEventListener("change", (e) => {
-    ledgerFilterDay = e.target.value;
+  const ledgerDayTriggerBtn = document.getElementById("ledgerDayTrigger");
+  const ledgerDayPanelEl = document.getElementById("ledgerDayPanel");
+  function closeLedgerDayPanel(){
+    ledgerDayPanelEl.classList.remove("show");
+    ledgerDayTriggerBtn.classList.remove("open");
+  }
+  ledgerDayTriggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ledgerDayPanelEl.classList.toggle("show");
+    ledgerDayTriggerBtn.classList.toggle("open");
+  });
+  document.getElementById("ledgerDayGrid").addEventListener("click", (e) => {
+    const cell = e.target.closest(".day-cell");
+    if(!cell || cell.classList.contains("empty")) return;
+    const d = cell.dataset.day;
+    ledgerFilterDay = d;
+    document.getElementById("ledgerDayTriggerLabel").textContent = "Ngày " + d;
+    buildDayCalendar(currentMonthKey, Number(d), "ledgerDayGrid", "ledgerDayPanelTitle");
+    closeLedgerDayPanel();
+    renderLedger();
+  });
+  document.getElementById("ledgerDayClear").addEventListener("click", () => {
+    ledgerFilterDay = "";
+    document.getElementById("ledgerDayTriggerLabel").textContent = "Tất cả ngày";
+    buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
+    closeLedgerDayPanel();
     renderLedger();
   });
   document.getElementById("ledgerFilterClear").addEventListener("click", () => {
@@ -1786,7 +1910,8 @@
     ledgerFilterDay = "";
     document.getElementById("ledgerSearch").value = "";
     ledgerCatFilterEl.value = "";
-    document.getElementById("ledgerDayFilter").value = "";
+    document.getElementById("ledgerDayTriggerLabel").textContent = "Tất cả ngày";
+    buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
     renderLedger();
   });
   }catch(err){ showErrorBanner("khởi tạo: " + err.message); }
