@@ -1557,7 +1557,7 @@
   const catDetailNextBtn = document.getElementById("catDetailNext");
   let currentDetailDay = null; // null khi đang xem theo danh mục; là số ngày khi đang xem theo ngày
 
-  function openEntryDetail(title, dotColor, rows, calc){
+  function openEntryDetail(title, dotColor, rows, calc, showCat){
     const sorted = rows.slice().sort((a,b) => a.day - b.day || String(a.id).localeCompare(String(b.id)));
     const total = sorted.reduce((s,e) => s + Number(e.amount||0), 0);
 
@@ -1587,7 +1587,7 @@
                 '<span class="cat-detail-row-day">Ngày ' + e.day + '</span>' +
                 '<span class="cat-detail-row-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
               '</div>' +
-              '<span class="badge" style="border-color:' + c.color + ';color:' + c.color + ';flex-shrink:0;margin:0 8px;">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' +
+              (showCat ? '<span class="badge" style="border-color:' + c.color + ';color:' + c.color + ';flex-shrink:0;margin:0 8px;">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' : '') +
               '<span class="cat-detail-row-amt">' + money(e.amount) + '</span>' +
             '</div>'
           );
@@ -1604,7 +1604,7 @@
     const personLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
     const m = cat.label.match(/chia\s*(\d+)/i);
     const calc = m ? { divisor: parseInt(m[1], 10), label: personLabel + " / " + m[1] } : null;
-    openEntryDetail(personLabel, cat.color, entries.filter(e => e.category === catId), calc);
+    openEntryDetail(personLabel, cat.color, entries.filter(e => e.category === catId), calc, false);
   }
   function openDayDetail(day){
     const total = daysInMonthKey(currentMonthKey);
@@ -1613,7 +1613,7 @@
     catDetailNextBtn.style.display = "";
     catDetailPrevBtn.disabled = currentDetailDay <= 1;
     catDetailNextBtn.disabled = currentDetailDay >= total;
-    openEntryDetail("Ngày " + currentDetailDay, null, entries.filter(e => Number(e.day) === currentDetailDay));
+    openEntryDetail("Ngày " + currentDetailDay, null, entries.filter(e => Number(e.day) === currentDetailDay), null, true);
   }
   catDetailPrevBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay - 1); });
   catDetailNextBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay + 1); });
