@@ -333,20 +333,35 @@
   /* ledger table */
   .t-row{
     display:grid;
-    grid-template-columns:52px 1fr auto;
+    grid-template-columns:56px 1fr auto;
     grid-template-areas:
-      "day name amt"
-      "cat cat actions";
-    align-items:center; column-gap:8px; row-gap:7px;
+      "day cat amt"
+      "name name name";
+    align-items:center; column-gap:8px; row-gap:6px;
     padding:12px 2px; border-bottom:1px solid var(--border);
   }
   .t-day{ grid-area:day; font-family:var(--mono); font-size:12px; color:var(--text-muted); white-space:nowrap; }
   .t-head{ display:none; }
-  .t-name{ grid-area:name; font-size:14px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .t-name{ grid-area:name; font-size:14px; color:var(--text); overflow:visible; text-overflow:clip; white-space:normal; line-height:1.4; }
   .t-note{ color:var(--text-faint); font-style:italic; font-weight:400; }
   .t-cat{ grid-area:cat; min-width:0; }
   .t-amt{ grid-area:amt; font-family:var(--mono); font-size:13.5px; color:var(--text); text-align:right; font-weight:600; white-space:nowrap; }
-  .t-actions{ grid-area:actions; display:flex; gap:6px; justify-content:flex-end; }
+  .t-actions{ grid-area:actions; display:none; gap:6px; justify-content:flex-end; }
+  .t-row-wrap{ position:relative; overflow:hidden; border-bottom:1px solid var(--border); }
+  .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; }
+  .t-row-wrap .t-row.dragging{ transition:none; }
+  .t-row-wrap .t-row.snap{ transition:transform .18s ease; }
+  .t-swipe-actions{ position:absolute; top:0; right:0; bottom:0; display:flex; z-index:0; }
+  .swipe-btn{
+    width:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    border:none; color:#fff; font-size:10.5px; font-weight:600; cursor:pointer; font-family:inherit;
+  }
+  .swipe-edit{ background:var(--chong); }
+  .swipe-delete{ background:#e0455a; }
+  @media (min-width:700px) and (pointer:fine){
+    .t-actions{ display:flex; }
+    .t-swipe-actions{ display:none; }
+  }
   @media (min-width:700px) and (pointer:fine){
     .t-row{
       grid-template-columns:64px 1fr 150px 100px 64px;
@@ -358,6 +373,7 @@
       text-transform:uppercase; border-bottom:1px solid var(--border); padding:10px 2px;
     }
     .t-amt{ font-weight:500; }
+    .t-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .t-head .t-day, .t-head .t-name, .t-head .t-cat, .t-head .t-amt{
       font-family:var(--sans); font-size:11px; color:var(--text-faint); font-weight:600;
       letter-spacing:.04em; text-transform:uppercase;
@@ -1345,7 +1361,17 @@
     buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
   }
 
+  let ledgerOpenSwipeWrap = null;
+  const LEDGER_SWIPE_W = 120;
+  function closeLedgerSwipe(){
+    if(ledgerOpenSwipeWrap){
+      const r = ledgerOpenSwipeWrap.querySelector(".t-row");
+      if(r){ r.classList.add("snap"); r.style.transform = "translateX(0px)"; }
+      ledgerOpenSwipeWrap = null;
+    }
+  }
   function renderLedger(){
+    closeLedgerSwipe();
     const body = document.getElementById("ledgerBody");
     const searchWords = stripDiacritics(ledgerFilterText).trim().split(/\s+/).filter(Boolean);
     const filtered = entries.filter(e => {
@@ -1372,19 +1398,31 @@
     body.innerHTML = sorted.map(e => {
       const c = catById[e.category] || catById.ca_nhan;
       return (
-        '<div class="t-row" data-id="' + e.id + '">' +
-          '<span class="t-day">Ngày ' + e.day + '</span>' +
-          '<span class="t-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
-          '<span class="t-cat"><span class="badge" style="border-color:' + c.color + ';color:' + c.color + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span></span>' +
-          '<span class="t-amt">' + money(e.amount) + '</span>' +
-          '<span class="t-actions">' +
-            '<button type="button" class="icon-btn" data-action="edit" aria-label="Sửa">' +
-              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+        '<div class="t-row-wrap" data-id="' + e.id + '">' +
+          '<div class="t-swipe-actions">' +
+            '<button type="button" class="swipe-btn swipe-edit" data-action="edit" aria-label="Sửa">' +
+              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+              '<span>Sửa</span>' +
             '</button>' +
-            '<button type="button" class="icon-btn" data-action="delete" aria-label="Xoá">' +
-              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>' +
+            '<button type="button" class="swipe-btn swipe-delete" data-action="delete" aria-label="Xoá">' +
+              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>' +
+              '<span>Xoá</span>' +
             '</button>' +
-          '</span>' +
+          '</div>' +
+          '<div class="t-row" data-id="' + e.id + '">' +
+            '<span class="t-day">Ngày ' + e.day + '</span>' +
+            '<span class="t-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
+            '<span class="t-cat"><span class="badge" style="border-color:' + c.color + ';color:' + c.color + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span></span>' +
+            '<span class="t-amt">' + money(e.amount) + '</span>' +
+            '<span class="t-actions">' +
+              '<button type="button" class="icon-btn" data-action="edit" aria-label="Sửa">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+              '</button>' +
+              '<button type="button" class="icon-btn" data-action="delete" aria-label="Xoá">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>' +
+              '</button>' +
+            '</span>' +
+          '</div>' +
         '</div>'
       );
     }).join("");
@@ -1642,9 +1680,13 @@
   document.getElementById("ledgerBody").addEventListener("click", (e) => {
     try{
       const btn = e.target.closest("button[data-action]");
-      if(!btn) return;
-      const row = e.target.closest(".t-row");
-      const id = row.getAttribute("data-id");
+      if(!btn){
+        if(ledgerOpenSwipeWrap && !e.target.closest(".t-swipe-actions")) closeLedgerSwipe();
+        return;
+      }
+      const wrap = e.target.closest(".t-row-wrap");
+      const id = wrap.getAttribute("data-id");
+      closeLedgerSwipe();
       if(btn.dataset.action === "edit"){
         const entry = entries.find(en => en.id === id);
         if(entry) openModal("edit", entry);
@@ -1668,6 +1710,56 @@
       }
     }catch(err){ showErrorBanner("ledger click: " + err.message); }
   });
+
+  // ---------- Vuốt trái để hiện Sửa/Xoá (mobile) ----------
+  (function(){
+    const body = document.getElementById("ledgerBody");
+    let activeRow = null, startX = 0, startY = 0, baseX = 0, axisLocked = null;
+    body.addEventListener("touchstart", (e) => {
+      const wrap = e.target.closest(".t-row-wrap");
+      if(!wrap || e.target.closest("button[data-action]")){ activeRow = null; return; }
+      if(ledgerOpenSwipeWrap && ledgerOpenSwipeWrap !== wrap) closeLedgerSwipe();
+      activeRow = wrap.querySelector(".t-row");
+      activeRow.classList.remove("snap");
+      activeRow.classList.add("dragging");
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY;
+      const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(activeRow.style.transform);
+      baseX = m ? parseFloat(m[1]) : 0;
+      axisLocked = null;
+    }, { passive: true });
+    body.addEventListener("touchmove", (e) => {
+      if(!activeRow) return;
+      const t = e.touches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if(axisLocked === null){
+        if(Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        axisLocked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if(axisLocked === "y"){ activeRow.classList.remove("dragging"); activeRow = null; return; }
+      }
+      if(axisLocked !== "x") return;
+      e.preventDefault();
+      const next = Math.max(-LEDGER_SWIPE_W, Math.min(0, baseX + dx));
+      activeRow.style.transform = "translateX(" + next + "px)";
+    }, { passive: false });
+    body.addEventListener("touchend", () => {
+      if(!activeRow) return;
+      const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(activeRow.style.transform);
+      const x = m ? parseFloat(m[1]) : 0;
+      const wrap = activeRow.closest(".t-row-wrap");
+      activeRow.classList.remove("dragging");
+      activeRow.classList.add("snap");
+      if(x < -LEDGER_SWIPE_W / 2){
+        activeRow.style.transform = "translateX(-" + LEDGER_SWIPE_W + "px)";
+        ledgerOpenSwipeWrap = wrap;
+      }else{
+        activeRow.style.transform = "translateX(0px)";
+        if(ledgerOpenSwipeWrap === wrap) ledgerOpenSwipeWrap = null;
+      }
+      activeRow = null;
+    });
+  })();
 
   // ---------- Theme toggle ----------
   const themeToggle = document.getElementById("themeToggle");
