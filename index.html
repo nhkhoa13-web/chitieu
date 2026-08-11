@@ -347,8 +347,8 @@
   .t-cat{ grid-area:cat; min-width:0; }
   .t-amt{ grid-area:amt; font-family:var(--mono); font-size:13.5px; color:var(--text); text-align:right; font-weight:600; white-space:nowrap; }
   .t-actions{ grid-area:actions; display:none; gap:6px; justify-content:flex-end; }
-  .t-row-wrap{ position:relative; overflow:hidden; border-bottom:1px solid var(--border); }
-  .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; }
+  .t-row-wrap{ position:relative; overflow:hidden; border-radius:12px; margin-bottom:1px; }
+  .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; padding:7px 7px; }
   .t-row-wrap .t-row.dragging{ transition:none; }
   .t-row-wrap .t-row.snap{ transition:transform .18s ease; }
   .t-swipe-actions{ position:absolute; top:0; right:0; bottom:0; display:flex; z-index:0; }
@@ -374,6 +374,8 @@
     }
     .t-amt{ font-weight:500; }
     .t-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .t-row-wrap{ border-radius:0; margin-bottom:0; border-bottom:1px solid var(--border); }
+    .t-row-wrap .t-row{ padding:12px 2px; background:transparent; }
     .t-head .t-day, .t-head .t-name, .t-head .t-cat, .t-head .t-amt{
       font-family:var(--sans); font-size:11px; color:var(--text-faint); font-weight:600;
       letter-spacing:.04em; text-transform:uppercase;
