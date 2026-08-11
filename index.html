@@ -41,7 +41,7 @@
       radial-gradient(circle at 50% 100%, rgba(41,231,240,0.05), transparent 55%);
     background-size:34px 34px, 34px 34px, auto, auto, auto;
     background-attachment:fixed;
-    padding:28px 16px calc(96px + env(safe-area-inset-bottom, 0px));
+    padding:0 16px calc(96px + env(safe-area-inset-bottom, 0px));
   }
   html[data-theme="light"] body{
     background-image:
@@ -54,7 +54,14 @@
   .wrap{ max-width:760px; margin:0 auto; }
 
   /* header */
-  header.top{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:10px; }
+  header.top{
+    display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:10px;
+    position:sticky; top:0; z-index:45;
+    margin:0 -16px 22px; padding:16px 16px 12px;
+    background:var(--surface-glass);
+    backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--border);
+  }
   .header-actions{ display:flex; align-items:center; gap:8px; }
   .month-switcher{ position:relative; }
   .month-trigger{
@@ -92,9 +99,37 @@
   }
   .month-delete-btn:hover{ background:rgba(var(--vk-rgb),0.14); color:var(--vk-soft); }
   .month-delete-btn svg{ width:15px; height:15px; }
-  .month-add-row{ display:flex; gap:6px; border-top:1px solid var(--border); padding-top:10px; }
-  .month-add-row select{ flex:1; min-width:0; padding:8px 9px; font-size:13px; }
-  .month-add-row button{ padding:8px 12px; font-size:12.5px; white-space:nowrap; }
+  .month-add-row{ display:flex; gap:5px; border-top:1px solid var(--border); padding-top:10px; }
+  .month-add-row button{ padding:7px 10px; font-size:12px; white-space:nowrap; }
+  .mini-picker{ flex:1; min-width:0; }
+  .ym-picker{ position:relative; flex:1; min-width:0; }
+  .ym-panel{
+    position:absolute; top:calc(100% + 8px); left:0; width:220px; max-width:calc(100vw - 56px);
+    background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:10px;
+    z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
+  }
+  html[data-theme="light"] .ym-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
+  .ym-panel.show{ display:block; }
+  .ym-year-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .ym-year-nav{
+    width:26px; height:26px; border-radius:8px; border:none; background:var(--surface3); color:var(--text-mid);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;
+  }
+  .ym-year-nav:hover{ background:rgba(var(--chong-rgb),0.16); color:var(--chong-soft); }
+  .ym-year-nav:disabled{ opacity:0.3; cursor:not-allowed; }
+  .ym-year-nav:disabled:hover{ background:var(--surface3); color:var(--text-mid); }
+  .ym-year-label{ font-family:var(--mono); font-size:15px; font-weight:700; color:var(--text-hi); }
+  .ym-month-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+  .ym-month-cell{
+    padding:9px 0; border-radius:9px; border:none; background:transparent; color:var(--text-mid);
+    font-family:var(--mono); font-size:12.5px; cursor:pointer; text-align:center;
+  }
+  .ym-month-cell:hover{ background:var(--surface3); }
+  .ym-month-cell.active{ background:rgba(var(--chong-rgb),0.18); color:var(--chong-soft); font-weight:700; }
+  .mini-picker .day-trigger-sm{ padding:6px 8px; font-size:12px; gap:4px; }
+  .mini-picker .day-trigger-sm .chev{ width:12px; height:12px; }
+  .mini-panel{ min-width:60px; max-width:calc(100vw - 56px); max-height:220px; overflow-y:auto; }
+  .mini-panel .cat-option{ padding:8px 9px; font-size:13px; }
 
   .menu-switcher{ position:relative; }
   .menu-panel{
@@ -237,6 +272,7 @@
     border:1px solid var(--border); border-radius:16px; padding:20px 22px; margin-bottom:16px;
     overflow:hidden;
   }
+  #ledgerCard{ padding-bottom:30px; }
   .card::before{
     content:""; position:absolute; top:0; left:0; right:0; height:2px;
     background:linear-gradient(90deg, var(--chong), transparent 45%, transparent 55%, var(--vk));
@@ -261,7 +297,8 @@
     flex:1 1 200px; min-width:0; padding:8px 12px; font-size:13px; border-radius:10px;
     border:1px solid var(--border); background:var(--surface3); color:var(--text); font-family:inherit;
   }
-  .ledger-filter-day{ flex:0 1 110px; }
+  .ledger-filter-day{ flex:0 1 148px; }
+  .ledger-filter-cat{ flex:1 1 190px; }
   .ledger-filter-input::placeholder{ color:var(--text-faint); }
   .cat-grid{ display:none; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:12px 18px; }
   .cat-grid.show{ display:grid; }
@@ -383,7 +420,33 @@
   .day-cell.today:not(.active){ box-shadow:inset 0 0 0 1px var(--border2); color:var(--text-hi); }
   .day-cell.empty{ cursor:default; }
   .day-cell.empty:hover{ background:transparent; }
-  .day-trigger-sm{ padding:8px 12px; font-size:13px; border-radius:10px; background:var(--surface3); border-color:var(--border); }
+  .day-trigger-sm{ padding:8px 12px; font-size:13px; border-radius:10px; background:var(--surface3); border-color:var(--border); white-space:nowrap; overflow:hidden; }
+  .day-trigger-sm span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .day-panel-right{ left:auto; right:0; }
+  .cat-picker{ position:relative; }
+  .cat-trigger-label{ display:flex; align-items:center; gap:9px; overflow:hidden; min-width:0; }
+  .cat-trigger-label span:last-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cat-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .cat-panel{
+    position:absolute; top:calc(100% + 8px); left:0; width:100%; min-width:200px; max-width:calc(100vw - 56px);
+    background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:6px;
+    z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
+    max-height:340px; overflow-y:auto;
+  }
+  html[data-theme="light"] .cat-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
+  .cat-panel.show{ display:block; }
+  .cat-option{
+    display:flex; align-items:center; gap:10px; width:100%; padding:10px 10px; border-radius:9px; border:none;
+    background:transparent; color:var(--text-mid); font-family:inherit; font-size:14px; cursor:pointer; text-align:left;
+  }
+  .cat-option:hover{ background:var(--surface3); }
+  .cat-option.active{ background:rgba(var(--chong-rgb),0.14); color:var(--text-hi); font-weight:700; }
+  .cat-option .cat-dot{ width:10px; height:10px; }
+  .day-panel-inline{
+    display:none; background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:12px;
+    margin:-6px 0 14px; max-width:280px;
+  }
+  .day-panel-inline.show{ display:block; }
   .day-panel-clear{
     width:100%; margin-top:9px; padding:8px; border-radius:9px; border:1px solid var(--border);
     background:transparent; color:var(--text-mid); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
@@ -424,8 +487,8 @@
 
   /* ---- Mobile-first refinements (this app is used mainly on phones) ---- */
   @media (max-width:480px){
-    body{ padding:18px 12px 44px; }
-    header.top{ margin-bottom:16px; }
+    body{ padding:0 12px 44px; }
+    header.top{ margin:0 -12px 16px; padding:14px 12px 10px; }
     .title{ font-size:19px; }
     .eyebrow{ font-size:21px; margin-bottom:5px; }
     .hero{ padding:18px 16px; gap:16px; border-radius:16px; }
@@ -463,8 +526,26 @@
           <div class="month-panel" id="monthPanel">
             <div class="month-list" id="monthList"></div>
             <div class="month-add-row">
-              <select id="newMonthSelect" aria-label="Chọn tháng"></select>
-              <select id="newYearSelect" aria-label="Chọn năm"></select>
+              <div class="ym-picker" id="ymPicker">
+                <button type="button" class="day-trigger day-trigger-sm" id="ymTrigger">
+                  <span id="ymTriggerLabel">Tháng 8 · 2026</span>
+                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <input type="hidden" id="newMonthSelect" aria-label="Chọn tháng" />
+                <input type="hidden" id="newYearSelect" aria-label="Chọn năm" />
+                <div class="ym-panel" id="ymPanel">
+                  <div class="ym-year-header">
+                    <button type="button" class="ym-year-nav" id="ymYearPrev" aria-label="Năm trước">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <span class="ym-year-label" id="ymYearLabel">2026</span>
+                    <button type="button" class="ym-year-nav" id="ymYearNext" aria-label="Năm sau">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                  </div>
+                  <div class="ym-month-grid" id="ymMonthGrid"></div>
+                </div>
+              </div>
               <button type="button" class="btn-primary" id="addMonthBtn">Thêm</button>
             </div>
           </div>
@@ -540,7 +621,6 @@
               <span class="info-icon half"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-hi)" stroke-width="2"><path d="M12 3v18M5 7l7-4 7 4M5 7l-2 8a4 4 0 0 0 8 0Z"/></svg></span>
               <div>
                 <div class="info-row-label">Chênh lệch trả hộ (chia 2)</div>
-                <div class="info-row-note">(Chồng tính − Vợ tính) / 2</div>
                 <div class="info-row-calc" id="calcHalf"></div>
               </div>
             </div>
@@ -551,7 +631,6 @@
               <span class="info-icon debt"><svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H7"/></svg></span>
               <div>
                 <div class="info-row-label">Ghi nợ trực tiếp</div>
-                <div class="info-row-note">Vợ thiếu − Chồng thiếu</div>
                 <div class="info-row-calc" id="calcDebt"></div>
               </div>
             </div>
@@ -561,8 +640,7 @@
             <div class="info-row-main">
               <span class="info-icon third"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-hi)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></span>
               <div>
-                <div class="info-row-label">Chênh lệch chi tiêu chung (chia 3)</div>
-                <div class="info-row-note">(Chồng chung − Vợ chung) / 3</div>
+                <div class="info-row-label">Chi tiêu chung (chia 3)</div>
                 <div class="info-row-calc" id="calcThird"></div>
               </div>
             </div>
@@ -607,7 +685,7 @@
       <div id="peakCaption"></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="ledgerCard">
       <div class="card-head">
         <h2 class="card-title">Sổ ghi chép</h2>
         <button class="btn-primary" id="addBtn">
@@ -616,22 +694,32 @@
         </button>
       </div>
       <div class="ledger-filter-row">
-        <input type="text" id="ledgerSearch" class="ledger-filter-input" placeholder="Tìm theo tên khoản chi…" />
+        <div class="cat-picker ledger-filter-cat" id="ledgerCatPicker">
+          <button type="button" class="day-trigger day-trigger-sm" id="ledgerCatTrigger">
+            <span class="cat-trigger-label">
+              <span class="cat-dot" id="ledgerCatTriggerDot" style="background:var(--text-muted)"></span>
+              <span id="ledgerCatTriggerLabel">Tất cả danh mục</span>
+            </span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <select id="ledgerCatFilter" style="display:none"><option value="">Tất cả danh mục</option></select>
+          <div class="cat-panel" id="ledgerCatPanel">
+            <div class="cat-list" id="ledgerCatList"></div>
+          </div>
+        </div>
         <div class="day-picker ledger-filter-day" id="ledgerDayPicker">
           <button type="button" class="day-trigger day-trigger-sm" id="ledgerDayTrigger">
             <span id="ledgerDayTriggerLabel">Tất cả ngày</span>
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
           </button>
-          <div class="day-panel" id="ledgerDayPanel">
+          <div class="day-panel day-panel-right" id="ledgerDayPanel">
             <div class="day-panel-title" id="ledgerDayPanelTitle"></div>
             <div class="day-grid-weekdays"><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span></div>
             <div class="day-grid" id="ledgerDayGrid"></div>
             <button type="button" class="day-panel-clear" id="ledgerDayClear">Tất cả ngày</button>
           </div>
         </div>
-        <select id="ledgerCatFilter" class="ledger-filter-select">
-          <option value="">Tất cả danh mục</option>
-        </select>
+        <input type="text" id="ledgerSearch" class="ledger-filter-input" placeholder="Tìm theo tên khoản chi…" />
         <button type="button" class="icon-btn" id="ledgerFilterClear" aria-label="Xoá bộ lọc" title="Xoá bộ lọc" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -677,7 +765,19 @@
         </label>
         <label class="field">
           <span class="field-label">Loại chi tiêu <span class="field-required">*</span></span>
-          <select id="fCategory"></select>
+          <div class="cat-picker" id="catPicker">
+            <button type="button" class="day-trigger" id="catTrigger">
+              <span class="cat-trigger-label">
+                <span class="cat-dot" id="catTriggerDot"></span>
+                <span id="catTriggerLabel">Cá nhân</span>
+              </span>
+              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <select id="fCategory" style="display:none"></select>
+            <div class="cat-panel day-panel-right" id="catPanel">
+              <div class="cat-list" id="catList"></div>
+            </div>
+          </div>
           <span class="select-hint" id="fCategoryHint"></span>
         </label>
       </div>
@@ -739,15 +839,7 @@
         </div>
         <div class="cat-detail-stat">
           <div class="cat-detail-stat-num" id="catDetailCount">0</div>
-          <div class="cat-detail-stat-label">Khoản chi</div>
-        </div>
-        <div class="cat-detail-stat">
-          <div class="cat-detail-stat-num" id="catDetailPct">0%</div>
-          <div class="cat-detail-stat-label">Trên tổng tháng</div>
-        </div>
-        <div class="cat-detail-stat">
-          <div class="cat-detail-stat-num" id="catDetailAvg">0 ₫</div>
-          <div class="cat-detail-stat-label">Trung bình/khoản</div>
+          <div class="cat-detail-stat-label" id="catDetailCountLabel">Khoản chi</div>
         </div>
       </div>
       <div class="cat-detail-list" id="catDetailList"></div>
@@ -1336,7 +1428,23 @@
 
   fCategory.innerHTML = CATS.map(c => '<option value="' + c.id + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</option>').join("");
   fCategory.addEventListener("change", updateCategoryHint);
-  function updateCategoryHint(){ fCategoryHint.textContent = catById[fCategory.value].sub; }
+  function updateCategoryHint(){
+    fCategoryHint.textContent = catById[fCategory.value].sub;
+    setCatTrigger(fCategory.value);
+  }
+  function setCatTrigger(id){
+    const c = catById[id];
+    document.getElementById("catTriggerLabel").textContent = c.label.replace(/\s*·\s*chia\s*\d+/i, "");
+    document.getElementById("catTriggerDot").style.background = c.color;
+  }
+  function buildCatList(selectedId){
+    document.getElementById("catList").innerHTML = CATS.map(c =>
+      '<button type="button" class="cat-option' + (c.id === selectedId ? " active" : "") + '" data-cat="' + c.id + '">' +
+        '<span class="cat-dot" style="background:' + c.color + '"></span>' +
+        '<span>' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' +
+      '</button>'
+    ).join("");
+  }
 
   function populateDayOptions(selectedDay){
     const total = daysInMonthKey(currentMonthKey);
@@ -1358,6 +1466,7 @@
     fCategory.value = entry ? entry.category : "ca_nhan";
     fNote.value = entry ? (entry.note || "") : "";
     updateCategoryHint();
+    buildCatList(fCategory.value);
     modalOverlay.classList.add("show");
   }
   function closeModal(){
@@ -1365,6 +1474,7 @@
     editingId = null;
     entryForm.reset();
     closeDayPanel();
+    closeCatPanel();
   }
 
   document.getElementById("addBtn").addEventListener("click", () => openModal("add", null));
@@ -1407,21 +1517,24 @@
   const catDetailNextBtn = document.getElementById("catDetailNext");
   let currentDetailDay = null; // null khi đang xem theo danh mục; là số ngày khi đang xem theo ngày
 
-  function openEntryDetail(title, dotColor, rows){
+  function openEntryDetail(title, dotColor, rows, calc){
     const sorted = rows.slice().sort((a,b) => a.day - b.day || String(a.id).localeCompare(String(b.id)));
     const total = sorted.reduce((s,e) => s + Number(e.amount||0), 0);
-    const grandTotal = entries.reduce((s,e) => s + Number(e.amount||0), 0);
-    const pct = grandTotal ? (total / grandTotal * 100) : 0;
-    const avg = sorted.length ? total / sorted.length : 0;
 
     const dotEl = document.getElementById("catDetailDot");
     dotEl.style.background = dotColor || "transparent";
     dotEl.style.display = dotColor ? "" : "none";
     document.getElementById("catDetailTitle").textContent = title;
     document.getElementById("catDetailTotal").textContent = money(total);
-    document.getElementById("catDetailCount").textContent = String(sorted.length);
-    document.getElementById("catDetailPct").textContent = (grandTotal ? pct.toFixed(1) : "0") + "%";
-    document.getElementById("catDetailAvg").textContent = money(avg);
+    const countNumEl = document.getElementById("catDetailCount");
+    const countLabelEl = document.getElementById("catDetailCountLabel");
+    if(calc && calc.divisor){
+      countNumEl.textContent = money(total / calc.divisor);
+      countLabelEl.textContent = calc.label;
+    } else {
+      countNumEl.textContent = String(sorted.length);
+      countLabelEl.textContent = "Khoản chi";
+    }
 
     const list = document.getElementById("catDetailList");
     list.innerHTML = sorted.length === 0
@@ -1448,7 +1561,10 @@
     currentDetailDay = null;
     catDetailPrevBtn.style.display = "none";
     catDetailNextBtn.style.display = "none";
-    openEntryDetail(cat.label.replace(/\s*·\s*chia\s*\d+/i, ""), cat.color, entries.filter(e => e.category === catId));
+    const personLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
+    const m = cat.label.match(/chia\s*(\d+)/i);
+    const calc = m ? { divisor: parseInt(m[1], 10), label: personLabel + " / " + m[1] } : null;
+    openEntryDetail(personLabel, cat.color, entries.filter(e => e.category === catId), calc);
   }
   function openDayDetail(day){
     const total = daysInMonthKey(currentMonthKey);
@@ -1733,6 +1849,7 @@
     dayTriggerBtn.classList.toggle("open");
   });
   document.getElementById("dayGrid").addEventListener("click", (e) => {
+    e.stopPropagation();
     const cell = e.target.closest(".day-cell");
     if(!cell || cell.classList.contains("empty")) return;
     const d = cell.dataset.day;
@@ -1742,12 +1859,36 @@
     closeDayPanel();
   });
 
+  // ---------- Category picker wiring ----------
+  const catTriggerBtn = document.getElementById("catTrigger");
+  const catPanelEl = document.getElementById("catPanel");
+  function closeCatPanel(){
+    catPanelEl.classList.remove("show");
+    catTriggerBtn.classList.remove("open");
+  }
+  catTriggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    catPanelEl.classList.toggle("show");
+    catTriggerBtn.classList.toggle("open");
+  });
+  document.getElementById("catList").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opt = e.target.closest(".cat-option");
+    if(!opt) return;
+    const id = opt.dataset.cat;
+    fCategory.value = id;
+    updateCategoryHint();
+    buildCatList(id);
+    closeCatPanel();
+  });
+
   // ---------- Month switcher wiring ----------
   const monthTrigger = document.getElementById("monthTrigger");
   const monthPanel = document.getElementById("monthPanel");
   function closeMonthPanel(){
     monthPanel.classList.remove("show");
     monthTrigger.classList.remove("open");
+    closeYmPanel();
   }
   monthTrigger.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1757,9 +1898,9 @@
     if(opening) populateNewMonthPickers();
   });
   document.getElementById("monthList").addEventListener("click", (e) => {
+    e.stopPropagation();
     const delBtn = e.target.closest(".month-delete-btn");
     if(delBtn){
-      e.stopPropagation();
       deleteMonth(delBtn.dataset.deleteMonth);
       return;
     }
@@ -1817,25 +1958,39 @@
       }
     );
   }
+  let ymDisplayYear = null;
+  const YM_YEAR_MIN = new Date().getFullYear() - 2;
+  const YM_YEAR_MAX = new Date().getFullYear() + 2;
   function populateNewMonthPickers(){
     const monthSelect = document.getElementById("newMonthSelect");
     const yearSelect = document.getElementById("newYearSelect");
-    if(monthSelect.options.length === 0){
-      const opts = [];
-      for(let m = 1; m <= 12; m++) opts.push('<option value="' + String(m).padStart(2, "0") + '">Tháng ' + m + '</option>');
-      monthSelect.innerHTML = opts.join("");
-    }
-    const nowYear = new Date().getFullYear();
-    const usedYears = Object.keys(monthsData).map(k => parseInt(String(k).split("-")[0], 10)).filter(y => !isNaN(y));
-    const minYear = Math.min(nowYear - 1, ...(usedYears.length ? usedYears : [nowYear]));
-    const maxYear = Math.max(nowYear + 2, ...(usedYears.length ? usedYears : [nowYear]));
-    const years = [];
-    for(let y = minYear; y <= maxYear; y++) years.push(y);
-    const currentYearVal = yearSelect.value;
-    yearSelect.innerHTML = years.map(y => '<option value="' + y + '">Năm ' + y + '</option>').join("");
     const parts = String(currentMonthKey).split("-");
-    yearSelect.value = currentYearVal || parts[0] || String(nowYear);
-    monthSelect.value = parts[1] || "01";
+    const y = parseInt(parts[0], 10) || new Date().getFullYear();
+    const m = parts[1] || "01";
+    monthSelect.value = m;
+    yearSelect.value = String(y);
+    ymDisplayYear = Math.min(YM_YEAR_MAX, Math.max(YM_YEAR_MIN, y));
+    setYmTrigger(m, y);
+    buildYmYearHeader();
+    buildYmMonthGrid();
+  }
+  function setYmTrigger(m, y){
+    document.getElementById("ymTriggerLabel").textContent = "Tháng " + parseInt(m, 10) + " · " + y;
+  }
+  function buildYmYearHeader(){
+    document.getElementById("ymYearLabel").textContent = ymDisplayYear;
+    document.getElementById("ymYearPrev").disabled = ymDisplayYear <= YM_YEAR_MIN;
+    document.getElementById("ymYearNext").disabled = ymDisplayYear >= YM_YEAR_MAX;
+  }
+  function buildYmMonthGrid(){
+    const selectedM = document.getElementById("newMonthSelect").value;
+    const selectedY = document.getElementById("newYearSelect").value;
+    const isSelectedYear = String(ymDisplayYear) === selectedY;
+    document.getElementById("ymMonthGrid").innerHTML = Array.from({length: 12}, (_, i) => {
+      const v = String(i + 1).padStart(2, "0");
+      const active = isSelectedYear && v === selectedM;
+      return '<button type="button" class="ym-month-cell' + (active ? " active" : "") + '" data-val="' + v + '">Th' + (i + 1) + '</button>';
+    }).join("");
   }
   document.getElementById("addMonthBtn").addEventListener("click", () => {
     const m = document.getElementById("newMonthSelect").value;
@@ -1844,11 +1999,53 @@
     switchMonth(y + "-" + m);
     closeMonthPanel();
   });
+  const ymTriggerBtn = document.getElementById("ymTrigger");
+  const ymPanelEl = document.getElementById("ymPanel");
+  function closeYmPanel(){
+    ymPanelEl.classList.remove("show");
+    ymTriggerBtn.classList.remove("open");
+  }
+  ymTriggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ymDisplayYear = Math.min(YM_YEAR_MAX, Math.max(YM_YEAR_MIN, parseInt(document.getElementById("newYearSelect").value, 10) || YM_YEAR_MIN));
+    buildYmYearHeader();
+    buildYmMonthGrid();
+    ymPanelEl.classList.toggle("show");
+    ymTriggerBtn.classList.toggle("open");
+  });
+  document.getElementById("ymYearPrev").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if(ymDisplayYear <= YM_YEAR_MIN) return;
+    ymDisplayYear -= 1;
+    buildYmYearHeader();
+    buildYmMonthGrid();
+  });
+  document.getElementById("ymYearNext").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if(ymDisplayYear >= YM_YEAR_MAX) return;
+    ymDisplayYear += 1;
+    buildYmYearHeader();
+    buildYmMonthGrid();
+  });
+  document.getElementById("ymMonthGrid").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const cell = e.target.closest(".ym-month-cell");
+    if(!cell) return;
+    const v = cell.dataset.val;
+    document.getElementById("newMonthSelect").value = v;
+    document.getElementById("newYearSelect").value = String(ymDisplayYear);
+    setYmTrigger(v, ymDisplayYear);
+    buildYmMonthGrid();
+    closeYmPanel();
+  });
   document.addEventListener("click", (e) => {
     if(!e.target.closest(".month-switcher")) closeMonthPanel();
     if(!e.target.closest(".menu-switcher")) closeMenuPanel();
     if(!e.target.closest("#dayPicker")) closeDayPanel();
     if(!e.target.closest("#ledgerDayPicker")) closeLedgerDayPanel();
+    if(!e.target.closest("#catPicker")) closeCatPanel();
+    if(!e.target.closest("#ledgerCatPicker")) closeLedgerCatPanel();
+    if(!e.target.closest("#ymPicker")) closeYmPanel();
   });
 
   document.getElementById("balanceSpotlight").addEventListener("click", () => {
@@ -1866,14 +2063,50 @@
   const ledgerCatFilterEl = document.getElementById("ledgerCatFilter");
   ledgerCatFilterEl.innerHTML = '<option value="">Tất cả danh mục</option>' +
     CATS.map(c => '<option value="' + c.id + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</option>').join("");
+  function setLedgerCatTrigger(id){
+    const label = id ? catById[id].label.replace(/\s*·\s*chia\s*\d+/i, "") : "Tất cả danh mục";
+    const color = id ? catById[id].color : "var(--text-muted)";
+    document.getElementById("ledgerCatTriggerLabel").textContent = label;
+    document.getElementById("ledgerCatTriggerDot").style.background = color;
+  }
+  function buildLedgerCatList(selectedId){
+    const allOpt = '<button type="button" class="cat-option' + (!selectedId ? " active" : "") + '" data-cat="">' +
+      '<span class="cat-dot" style="background:var(--text-muted)"></span><span>Tất cả danh mục</span></button>';
+    document.getElementById("ledgerCatList").innerHTML = allOpt + CATS.map(c =>
+      '<button type="button" class="cat-option' + (c.id === selectedId ? " active" : "") + '" data-cat="' + c.id + '">' +
+        '<span class="cat-dot" style="background:' + c.color + '"></span>' +
+        '<span>' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' +
+      '</button>'
+    ).join("");
+  }
+  buildLedgerCatList("");
   let ledgerSearchTimer = null;
   document.getElementById("ledgerSearch").addEventListener("input", (e) => {
     clearTimeout(ledgerSearchTimer);
     const val = e.target.value;
     ledgerSearchTimer = setTimeout(() => { ledgerFilterText = val; renderLedger(); }, 150);
   });
-  ledgerCatFilterEl.addEventListener("change", (e) => {
-    ledgerFilterCat = e.target.value;
+  const ledgerCatTriggerBtn = document.getElementById("ledgerCatTrigger");
+  const ledgerCatPanelEl = document.getElementById("ledgerCatPanel");
+  function closeLedgerCatPanel(){
+    ledgerCatPanelEl.classList.remove("show");
+    ledgerCatTriggerBtn.classList.remove("open");
+  }
+  ledgerCatTriggerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ledgerCatPanelEl.classList.toggle("show");
+    ledgerCatTriggerBtn.classList.toggle("open");
+  });
+  document.getElementById("ledgerCatList").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opt = e.target.closest(".cat-option");
+    if(!opt) return;
+    const id = opt.dataset.cat;
+    ledgerFilterCat = id;
+    ledgerCatFilterEl.value = id;
+    setLedgerCatTrigger(id);
+    buildLedgerCatList(id);
+    closeLedgerCatPanel();
     renderLedger();
   });
   const ledgerDayTriggerBtn = document.getElementById("ledgerDayTrigger");
@@ -1888,6 +2121,7 @@
     ledgerDayTriggerBtn.classList.toggle("open");
   });
   document.getElementById("ledgerDayGrid").addEventListener("click", (e) => {
+    e.stopPropagation();
     const cell = e.target.closest(".day-cell");
     if(!cell || cell.classList.contains("empty")) return;
     const d = cell.dataset.day;
@@ -1910,6 +2144,8 @@
     ledgerFilterDay = "";
     document.getElementById("ledgerSearch").value = "";
     ledgerCatFilterEl.value = "";
+    setLedgerCatTrigger("");
+    buildLedgerCatList("");
     document.getElementById("ledgerDayTriggerLabel").textContent = "Tất cả ngày";
     buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
     renderLedger();
