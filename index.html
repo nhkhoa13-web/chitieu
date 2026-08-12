@@ -6,6 +6,7 @@
 <title>Sổ chi tiêu chung</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#080B10; --surface:#0E1420; --surface2:#121A28; --surface3:#0B111A;
@@ -156,9 +157,40 @@
     cursor:pointer; font-family:inherit;
   }
   .menu-item:hover{ background:var(--surface3); }
+  .menu-item-danger{ color:#e0455a; }
+  .menu-item-danger:hover{ background:rgba(224,69,90,0.12); }
   .menu-item-icon{ width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); flex-shrink:0; }
   .menu-item-icon svg{ width:14px; height:14px; }
   .menu-divider{ height:1px; background:var(--border); margin:5px 3px; }
+  .menu-account{ display:flex; align-items:center; gap:8px; padding:6px 8px; }
+  .menu-account-avatar{
+    width:24px; height:24px; border-radius:50%; background:var(--chong); color:#fff; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; font-family:var(--sans);
+    text-transform:uppercase;
+  }
+  .menu-account-email{ font-size:11.5px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* auth gate */
+  .auth-gate{
+    position:fixed; top:0; right:0; bottom:0; left:0; z-index:200; display:none; align-items:center; justify-content:center;
+    background:var(--bg); padding:20px;
+  }
+  .auth-gate.show{ display:flex; }
+  .auth-gate-card{
+    width:100%; max-width:340px; text-align:center; background:var(--surface-glass); border:1px solid var(--border);
+    border-radius:18px; padding:32px 24px; backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  }
+  .auth-gate-icon{
+    width:52px; height:52px; border-radius:14px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center;
+    background:rgba(var(--chong-rgb),0.14); color:var(--chong-soft);
+  }
+  .auth-gate-card h1{ font-family:var(--sans); font-size:18px; font-weight:700; color:var(--text-hi); margin:0 0 8px; }
+  .auth-gate-card p{ font-size:12.5px; color:var(--text-faint); line-height:1.5; margin:0 0 20px; }
+  .google-signin-slot{ display:flex; justify-content:center; min-height:44px; }
+  .auth-gate-error{
+    margin:14px 0 0; font-size:12px; color:#ff8a95; background:rgba(224,69,90,0.12);
+    border:1px solid rgba(224,69,90,0.35); border-radius:9px; padding:9px 11px; text-align:left;
+  }
   .eyebrow{
     font-family:var(--serif); font-size:25px; font-weight:700; letter-spacing:.03em; line-height:1.15;
     margin-bottom:6px; color:var(--chong-soft);
@@ -299,6 +331,13 @@
   }
   .ledger-filter-day{ flex:0 1 148px; }
   .ledger-filter-cat{ flex:1 1 190px; }
+  .sort-toggle-btn{
+    display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:10px; border:1px solid var(--border);
+    background:var(--surface3); color:var(--text-mid); font-family:inherit; font-size:12.5px; font-weight:600;
+    cursor:pointer; white-space:nowrap; flex-shrink:0;
+  }
+  .sort-toggle-btn:hover{ background:rgba(var(--chong-rgb),0.14); color:var(--chong-soft); }
+  .sort-icon{ transition:transform .18s ease; flex-shrink:0; }
   .ledger-filter-input::placeholder{ color:var(--text-faint); }
   .cat-grid{ display:none; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:12px 18px; }
   .cat-grid.show{ display:grid; }
@@ -327,7 +366,7 @@
   .peak-caption svg{ width:13px; height:13px; color:var(--gold); flex-shrink:0; }
   .day-col{ flex:1; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; position:relative; cursor:pointer; }
   .day-col:hover .day-bar{ filter:brightness(1.25); }
-  .day-bar{ width:100%; background:linear-gradient(180deg,var(--chong-soft),var(--chong)); border-radius:3px 3px 0 0; min-height:3px; transition:filter .12s ease; }
+  .day-bar{ width:100%; background:linear-gradient(180deg,var(--chong-soft),var(--chong)); border-radius:3px 3px 0 0; min-height:3px; transition:filter .12s ease, height .5s ease, opacity .3s ease; }
   .day-tick{ position:absolute; bottom:-18px; font-size:9.5px; color:var(--text-faint); }
 
   /* ledger table */
@@ -501,6 +540,7 @@
   @media (prefers-reduced-motion: reduce){
     #beamGroup{ transition:none; }
     .cat-bar-fill{ transition:none; }
+    .day-bar{ transition:filter .12s ease; }
   }
 
   /* ---- Mobile-first refinements (this app is used mainly on phones) ---- */
@@ -529,6 +569,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+  <div class="auth-gate" id="authGate">
+    <div class="auth-gate-card">
+      <div class="auth-gate-icon">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </div>
+      <h1>Sổ chi tiêu chung</h1>
+      <p id="authGateMsg">Đăng nhập bằng Google để tiếp tục — chỉ tài khoản đã được cấp quyền mới xem/sửa được dữ liệu.</p>
+      <div id="googleSignInBtn" class="google-signin-slot"></div>
+      <p class="auth-gate-error" id="authGateError" style="display:none;"></p>
+    </div>
+  </div>
   <div class="wrap">
     <header class="top">
       <div>
@@ -580,6 +631,11 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
           </button>
           <div class="menu-panel" id="menuPanel">
+            <div class="menu-account" id="menuAccount">
+              <span class="menu-account-avatar" id="menuAccountAvatar"></span>
+              <span class="menu-account-email" id="menuAccountEmail">—</span>
+            </div>
+            <div class="menu-divider"></div>
             <button type="button" class="menu-item" id="exportBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg></span>
               Xuất dữ liệu (.xlsx)
@@ -598,6 +654,11 @@
             <button type="button" class="menu-item" id="themeToggle">
               <span class="menu-item-icon"><svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
               <span id="themeMenuLabel">Giao diện tối</span>
+            </button>
+            <div class="menu-divider"></div>
+            <button type="button" class="menu-item menu-item-danger" id="signOutBtn">
+              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>
+              Đăng xuất
             </button>
           </div>
         </div>
@@ -738,6 +799,10 @@
           </div>
         </div>
         <input type="text" id="ledgerSearch" class="ledger-filter-input" placeholder="Tìm theo tên khoản chi…" />
+        <button type="button" class="sort-toggle-btn" id="ledgerSortToggle" aria-label="Sắp xếp theo ngày" title="Sắp xếp theo ngày">
+          <svg class="sort-icon" id="ledgerSortIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>
+          <span id="ledgerSortLabel">Cũ nhất</span>
+        </button>
         <button type="button" class="icon-btn" id="ledgerFilterClear" aria-label="Xoá bộ lọc" title="Xoá bộ lọc" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -919,6 +984,11 @@
   // (đề phòng mất mạng giữa chừng), không phải nơi lưu trữ chính thức.
   const SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbxCoDLzaz33EDqGHaP-1Q82_QLDwDzRNd7b_xV_Q47kxRG4wYIq1DBJweEEFPRXZ5dW/exec";
   const SHEET_SYNC_TOKEN = "chitieu-2026-khoa2k";
+
+  // ---------- Đăng nhập Google (bắt buộc) ----------
+  // 3) Dán Google OAuth Client ID (loại "Web application") vào đây.
+  //    Danh sách email được phép đăng nhập phải khớp với ALLOWED_EMAILS trong Code.gs.
+  const GOOGLE_CLIENT_ID = "720144060509-anhh4inbkjq5pnac30f6gi0op8mls7cl.apps.googleusercontent.com";
   const CACHE_KEY = "so_chi_tieu:cache:v1";
   const QUEUE_KEY = "so_chi_tieu:queue:v1";
   const LAST_SYNC_KEY = "so_chi_tieu:last_sync_at";
@@ -951,6 +1021,31 @@
 
   // ---------- Helpers ----------
   const money = (thousands) => new Intl.NumberFormat("vi-VN").format(Math.round((thousands||0)*1000)) + " \u20ab";
+  const prefersReducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function animateValue(el, toValue, formatter){
+    if(!el) return;
+    formatter = formatter || money;
+    const to = Number(toValue) || 0;
+    if(prefersReducedMotion()){
+      el.dataset.animVal = to;
+      el.textContent = formatter(to);
+      return;
+    }
+    const from = Number(el.dataset.animVal || 0);
+    el.dataset.animVal = to;
+    if(Math.abs(to - from) < 0.001){ el.textContent = formatter(to); return; }
+    const duration = 550;
+    const start = performance.now();
+    if(el._animRaf) cancelAnimationFrame(el._animRaf);
+    function tick(now){
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = formatter(from + (to - from) * eased);
+      if(t < 1){ el._animRaf = requestAnimationFrame(tick); }
+      else { el.textContent = formatter(to); el._animRaf = null; }
+    }
+    el._animRaf = requestAnimationFrame(tick);
+  }
   // Bỏ dấu tiếng Việt để tìm kiếm không phân biệt có dấu/không dấu (gõ "com ga" vẫn ra "Cơm gà").
   function stripDiacritics(str){
     return String(str)
@@ -1103,6 +1198,7 @@
       try{
         const payload = {
           token: SHEET_SYNC_TOKEN,
+          idToken: googleIdToken,
           action: item.action,
           monthKey: item.monthKey,
           entry: item.entry
@@ -1113,6 +1209,7 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => null);
+        if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
@@ -1143,13 +1240,14 @@
     }
     setSyncStatus("Đang đồng bộ…", false);
     try{
-      const payload = { token: SHEET_SYNC_TOKEN, action: "fetchMonth", monthKey };
+      const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "fetchMonth", monthKey };
       const res = await fetch(SHEET_SYNC_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => null);
+      if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
       if(!res.ok || !data || data.ok !== true){
         throw new Error((data && data.error) || ("HTTP " + res.status));
       }
@@ -1255,7 +1353,7 @@
     const isZero = Math.abs(balance.net) < 0.01;
     const dir = isZero ? "zero" : (balance.net > 0 ? "to-chong" : "to-vk");
     ownerLabel.textContent = isZero ? "Đã cân bằng" : (balance.net > 0 ? "Vợ đang nợ Chồng" : "Chồng đang nợ Vợ");
-    balNum.textContent = isZero ? "0 ₫" : money(Math.abs(balance.net));
+    animateValue(balNum, isZero ? 0 : Math.abs(balance.net));
     balNum.className = "balance-number " + dir;
     const wasOpen = spotlight.classList.contains("open");
     spotlight.className = "balance-spotlight " + dir + (wasOpen ? " open" : "");
@@ -1276,10 +1374,17 @@
       const isZero = Math.abs(val) < 0.01;
       const dir = isZero ? "zero" : (val > 0 ? "to-chong" : "to-vk");
       el.className = "val-badge " + dir;
-      const arrow = isZero ? "" : (val > 0
+      let arrowEl = el.querySelector(".val-arrow");
+      let numEl = el.querySelector(".val-num");
+      if(!numEl){
+        el.innerHTML = '<span class="val-arrow"></span><span class="val-num"></span>';
+        arrowEl = el.querySelector(".val-arrow");
+        numEl = el.querySelector(".val-num");
+      }
+      arrowEl.innerHTML = isZero ? "" : (val > 0
         ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>'
         : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>');
-      el.innerHTML = arrow + (isZero ? "0 ₫" : money(Math.abs(val)));
+      animateValue(numEl, Math.abs(val));
     }
 
     document.getElementById("calcHalf").innerHTML =
@@ -1294,31 +1399,41 @@
       "(" + wrapCk(money(totals.ck_chung)) + " − " + wrapVk(money(totals.vk_chung)) + ") / 3";
     valueBadge(balance.third, "valThird");
 
-    document.getElementById("grandTotal").textContent = money(grandTotal);
-    document.getElementById("entryCount").textContent = entries.length;
+    animateValue(document.getElementById("grandTotal"), grandTotal);
+    animateValue(document.getElementById("entryCount"), entries.length, (v) => String(Math.round(v)));
   }
 
   function renderCatGrid(totals, grandTotal){
     const grid = document.getElementById("catGrid");
     const maxVal = Math.max(0, ...CATS.map(c => totals[c.id] || 0));
-    grid.innerHTML = CATS.map(c => {
+    const needsRebuild = grid.children.length !== CATS.length ||
+      CATS.some((c, i) => grid.children[i] && grid.children[i].dataset.cat !== c.id);
+    if(needsRebuild){
+      grid.innerHTML = CATS.map(c => (
+        '<div class="cat-item" data-cat="' + c.id + '">' +
+          '<div class="cat-item-top">' +
+            '<span class="dot" style="background:' + c.color + '"></span>' +
+            '<span class="cat-label"><span class="cat-label-text"></span><span class="cat-top-tag"></span></span>' +
+            '<span class="cat-amount">0 ₫</span>' +
+          '</div>' +
+          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:0%;background:' + c.color + '"></div></div>' +
+        '</div>'
+      )).join("");
+    }
+    CATS.forEach(c => {
+      const item = grid.querySelector('.cat-item[data-cat="' + c.id + '"]');
+      if(!item) return;
       const v = totals[c.id] || 0;
       const pct = grandTotal ? (v/grandTotal*100) : 0;
       const isTop = v > 0 && v === maxVal;
-      const topTag = isTop
+      item.classList.toggle("top-cat", isTop);
+      item.querySelector(".cat-label-text").textContent = c.label.replace(/\s*·\s*chia\s*\d+/i, "");
+      item.querySelector(".cat-top-tag").innerHTML = isTop
         ? '<span class="top-tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9.2 8.6 2 9.2l5.5 4.7L5.8 21 12 17.1 18.2 21l-1.7-7.1L22 9.2l-7.2-.6Z"/></svg>Cao nhất</span>'
         : '';
-      return (
-        '<div class="cat-item' + (isTop ? ' top-cat' : '') + '" data-cat="' + c.id + '">' +
-          '<div class="cat-item-top">' +
-            '<span class="dot" style="background:' + c.color + '"></span>' +
-            '<span class="cat-label">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + topTag + '</span>' +
-            '<span class="cat-amount">' + money(v) + '</span>' +
-          '</div>' +
-          '<div class="cat-bar-track"><div class="cat-bar-fill" style="width:' + pct + '%;background:' + c.color + '"></div></div>' +
-        '</div>'
-      );
-    }).join("");
+      animateValue(item.querySelector(".cat-amount"), v);
+      item.querySelector(".cat-bar-fill").style.width = pct + "%";
+    });
   }
 
   function renderDayChart(){
@@ -1328,17 +1443,27 @@
     let peakDay = null;
     Object.entries(map).forEach(([d, v]) => { if(v === max && v > 0) peakDay = Number(d); });
     const chart = document.getElementById("dayChart");
-    let html = "";
+    if(chart.children.length !== 31){
+      let html = "";
+      for(let d=1; d<=31; d++){
+        html += '<div class="day-col" data-day="' + d + '">' +
+                  '<div class="day-bar" style="height:3%;opacity:0.18"></div>' +
+                  (d % 5 === 0 ? '<div class="day-tick">' + d + '</div>' : '') +
+                '</div>';
+      }
+      chart.innerHTML = html;
+    }
     for(let d=1; d<=31; d++){
       const amt = map[d] || 0;
       const pct = amt/max*100;
       const isPeak = d === peakDay;
-      html += '<div class="day-col" data-day="' + d + '" title="Ngày ' + d + ': ' + money(amt) + '">' +
-                '<div class="day-bar' + (isPeak ? ' peak' : '') + '" style="height:' + Math.max(3,pct) + '%;opacity:' + (amt?1:0.18) + '"></div>' +
-                (d % 5 === 0 ? '<div class="day-tick">' + d + '</div>' : '') +
-              '</div>';
+      const col = chart.children[d-1];
+      col.title = "Ngày " + d + ": " + money(amt);
+      const bar = col.querySelector(".day-bar");
+      bar.style.height = Math.max(3,pct) + "%";
+      bar.style.opacity = amt ? 1 : 0.18;
+      bar.classList.toggle("peak", isPeak);
     }
-    chart.innerHTML = html;
 
     const caption = document.getElementById("peakCaption");
     if(peakDay){
@@ -1355,6 +1480,7 @@
   let ledgerFilterText = "";
   let ledgerFilterCat = "";
   let ledgerFilterDay = "";
+  let ledgerSortDir = "asc";
 
   function populateLedgerDayFilter(){
     if(!document.getElementById("ledgerDayGrid")) return;
@@ -1386,7 +1512,9 @@
       }
       return true;
     });
-    const sorted = filtered.slice().sort((a,b) => a.day - b.day || String(a.id).localeCompare(String(b.id)));
+    const sorted = filtered.slice().sort((a,b) =>
+      (ledgerSortDir === "asc" ? a.day - b.day : b.day - a.day) || String(a.id).localeCompare(String(b.id))
+    );
 
     const clearBtn = document.getElementById("ledgerFilterClear");
     if(clearBtn) clearBtn.style.display = (ledgerFilterText || ledgerFilterCat || ledgerFilterDay) ? "" : "none";
@@ -1434,13 +1562,14 @@
   async function pushFullMonths(monthsObj){
     for(const monthKey of Object.keys(monthsObj)){
       try{
-        const payload = { token: SHEET_SYNC_TOKEN, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
+        const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
         const res = await fetch(SHEET_SYNC_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => null);
+        if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
@@ -2031,13 +2160,14 @@
           closeMonthPanel();
           if(SHEET_SYNC_URL){
             setSyncStatus("Đang xoá tháng trên Google Sheet…", false);
-            const payload = { token: SHEET_SYNC_TOKEN, action: "deleteMonth", monthKey: key };
+            const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "deleteMonth", monthKey: key };
             const res = await fetch(SHEET_SYNC_URL, {
               method: "POST",
               headers: { "Content-Type": "text/plain;charset=utf-8" },
               body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => null);
+            if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
             if(!res.ok || !data || data.ok !== true){
               throw new Error((data && data.error) || ("HTTP " + res.status));
             }
@@ -2180,6 +2310,15 @@
     const val = e.target.value;
     ledgerSearchTimer = setTimeout(() => { ledgerFilterText = val; renderLedger(); }, 150);
   });
+  function updateLedgerSortTrigger(){
+    document.getElementById("ledgerSortLabel").textContent = ledgerSortDir === "asc" ? "Cũ nhất" : "Mới nhất";
+    document.getElementById("ledgerSortIcon").style.transform = ledgerSortDir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+  }
+  document.getElementById("ledgerSortToggle").addEventListener("click", () => {
+    ledgerSortDir = ledgerSortDir === "asc" ? "desc" : "asc";
+    updateLedgerSortTrigger();
+    renderLedger();
+  });
   const ledgerCatTriggerBtn = document.getElementById("ledgerCatTrigger");
   const ledgerCatPanelEl = document.getElementById("ledgerCatPanel");
   function closeLedgerCatPanel(){
@@ -2244,10 +2383,132 @@
     buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
     renderLedger();
   });
+  document.getElementById("signOutBtn").addEventListener("click", () => {
+    closeMenuPanel();
+    signOut();
+  });
   }catch(err){ showErrorBanner("khởi tạo: " + err.message); }
 
+  // ---------- Đăng nhập Google ----------
+  let googleIdToken = null;
+  let googleUserEmail = null;
+  const AUTH_CACHE_KEY = "so_chi_tieu:auth:v1";
+
+  function authGateShow(msg, isError){
+    document.getElementById("authGate").classList.add("show");
+    const errEl = document.getElementById("authGateError");
+    if(isError && msg){
+      errEl.textContent = msg;
+      errEl.style.display = "";
+    }else{
+      errEl.style.display = "none";
+    }
+  }
+  function authGateHide(){
+    document.getElementById("authGate").classList.remove("show");
+  }
+  function parseJwtPayload(token){
+    try{
+      const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const json = decodeURIComponent(atob(base64).split("").map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join(""));
+      return JSON.parse(json);
+    }catch(err){ return null; }
+  }
+  function updateAccountUi(){
+    const emailEl = document.getElementById("menuAccountEmail");
+    const avatarEl = document.getElementById("menuAccountAvatar");
+    if(googleUserEmail){
+      emailEl.textContent = googleUserEmail;
+      avatarEl.textContent = googleUserEmail.slice(0, 1);
+    }else{
+      emailEl.textContent = "Chưa đăng nhập";
+      avatarEl.textContent = "?";
+    }
+  }
+  function saveAuthSession(idToken, payload){
+    try{ sessionStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ idToken, email: payload.email, exp: (payload.exp || 0) * 1000 })); }catch(err){}
+  }
+  function clearAuthSession(){
+    try{ sessionStorage.removeItem(AUTH_CACHE_KEY); }catch(err){}
+  }
+  function loadAuthSession(){
+    try{
+      const raw = sessionStorage.getItem(AUTH_CACHE_KEY);
+      if(!raw) return null;
+      const data = JSON.parse(raw);
+      if(!data.idToken || !data.exp || data.exp <= Date.now()) return null;
+      return data;
+    }catch(err){ return null; }
+  }
+  function handleGoogleCredential(response){
+    const idToken = response.credential;
+    const payload = parseJwtPayload(idToken);
+    if(!payload || !payload.email){
+      authGateShow("Không đọc được thông tin tài khoản Google. Thử lại.", true);
+      return;
+    }
+    googleIdToken = idToken;
+    googleUserEmail = payload.email;
+    saveAuthSession(idToken, payload);
+    authGateHide();
+    updateAccountUi();
+    loadData();
+  }
+  function signOut(msg){
+    googleIdToken = null;
+    googleUserEmail = null;
+    clearAuthSession();
+    updateAccountUi();
+    if(window.google && google.accounts && google.accounts.id){
+      try{ google.accounts.id.disableAutoSelect(); }catch(err){}
+    }
+    authGateShow(msg || "", !!msg);
+    initGoogleSignInButton();
+  }
+  function handleSyncAuthError(data){
+    if(data && data.authError){
+      signOut("Phiên đăng nhập đã hết hạn hoặc không có quyền truy cập — vui lòng đăng nhập lại.");
+      return true;
+    }
+    return false;
+  }
+  function initGoogleSignInButton(){
+    if(!GOOGLE_CLIENT_ID || !window.google || !google.accounts || !google.accounts.id) return;
+    google.accounts.id.renderButton(document.getElementById("googleSignInBtn"), {
+      theme: "filled_black", size: "large", shape: "pill", text: "signin_with", width: 280
+    });
+  }
+  function initGoogleSignIn(){
+    if(!GOOGLE_CLIENT_ID){
+      // Chưa cấu hình đăng nhập Google -> bỏ qua, chạy app bình thường (tương thích ngược).
+      loadData();
+      return;
+    }
+    const cached = loadAuthSession();
+    if(cached){
+      googleIdToken = cached.idToken;
+      googleUserEmail = cached.email;
+      updateAccountUi();
+      loadData();
+    }else{
+      authGateShow("", false);
+    }
+    (function trySetup(){
+      if(!window.google || !google.accounts || !google.accounts.id){ setTimeout(trySetup, 300); return; }
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        auto_select: true
+      });
+      if(!cached){
+        initGoogleSignInButton();
+        google.accounts.id.prompt();
+      }
+    })();
+  }
+
   // ---------- Init ----------
-  loadData();
+  initGoogleSignIn();
 })();
 </script>
 </body>
