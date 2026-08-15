@@ -874,7 +874,8 @@
         </label>
         <label class="field field-amount">
           <span class="field-label">Số tiền (nghìn) <span class="field-required">*</span></span>
-          <input type="number" id="fAmount" min="0" step="1" placeholder="vd. 35" required />
+          <input type="text" autocomplete="off" id="fAmount" placeholder="vd. 35 hoặc 10+20" required />
+          <span class="select-hint" id="fAmountPreview"></span>
         </label>
       </div>
       <label class="field">
@@ -1024,6 +1025,25 @@
 
   // ---------- Helpers ----------
   const money = (thousands) => new Intl.NumberFormat("vi-VN").format(Math.round((thousands||0)*1000)) + " \u20ab";
+  // Cho phép gõ biểu thức cộng/trừ/nhân/chia đơn giản vào ô "Số tiền", vd. "10+20", "=15*2".
+  // Chỉ chấp nhận chuỗi CHỈ gồm số, dấu chấm/phẩy, khoảng trắng và + - * / ( ) — không cho phép
+  // chữ cái hay ký tự khác lọt vào trước khi tính, để tránh chạy code lạ qua Function().
+  function evalAmountExpr(raw){
+    if(raw === null || raw === undefined) return NaN;
+    let s = String(raw).trim();
+    if(!s) return NaN;
+    if(s[0] === "=") s = s.slice(1).trim(); // lỡ gõ kiểu công thức Excel/Sheet "=10+20"
+    s = s.replace(/,/g, "."); // lỡ gõ dấu phẩy làm dấu thập phân
+    if(!/^[0-9+\-*/().\s]+$/.test(s)) return NaN; // có ký tự lạ -> không tính, coi như không hợp lệ
+    if(!/[0-9]/.test(s)) return NaN; // chỉ toàn dấu toán tử, không có số nào
+    try{
+      const result = Function('"use strict"; return (' + s + ')')();
+      if(typeof result !== "number" || !isFinite(result)) return NaN;
+      return Math.round(result * 100) / 100; // làm tròn 2 chữ số thập phân cho gọn
+    }catch(err){
+      return NaN;
+    }
+  }
   const prefersReducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function animateValue(el, toValue, formatter){
     if(!el) return;
@@ -1592,11 +1612,40 @@
   const fDay = document.getElementById("fDay");
   const fName = document.getElementById("fName");
   const fAmount = document.getElementById("fAmount");
+  const fAmountPreview = document.getElementById("fAmountPreview");
   const fCategory = document.getElementById("fCategory");
   const fNote = document.getElementById("fNote");
   const fCategoryHint = document.getElementById("fCategoryHint");
   const modalTitle = document.getElementById("modalTitle");
   const submitBtn = document.getElementById("submitBtn");
+
+  // Có phải đang gõ "công thức" (có phép tính) hay chỉ là 1 số đơn thuần?
+  // vd. "15" -> không phải công thức; "10+20", "=15*2", "-5" (số âm) -> "-5" KHÔNG tính là công thức.
+  function isAmountFormula(raw){
+    let s = String(raw || "").trim();
+    if(!s) return false;
+    if(s[0] === "=") return true; // gõ kiểu "=..." luôn coi là công thức
+    s = s.replace(/^-/, ""); // bỏ dấu trừ đầu (số âm đơn thuần), không tính là công thức
+    return /[+\-*/()]/.test(s);
+  }
+
+  // Ô "Số tiền" GIỮ NGUYÊN chữ bạn gõ (kể cả công thức như "10+20") — không tự thay bằng kết quả,
+  // để khi bấm "Sửa" lại, công thức gốc vẫn hiện ra chứ không chỉ hiện con số đã tính.
+  // Kết quả tính được chỉ hiện ở dòng gợi ý nhỏ bên dưới ô, và số đó mới là số thực sự được lưu.
+  function updateAmountValidity(){
+    const val = fAmount.value.trim();
+    if(!val){ fAmount.setCustomValidity(""); fAmountPreview.textContent = ""; return; }
+    const result = evalAmountExpr(val);
+    if(result === null || isNaN(result) || result < 0){
+      fAmount.setCustomValidity("Số tiền không hợp lệ — chỉ gõ số hoặc phép tính cộng/trừ/nhân/chia, vd. 15 hoặc 10+20");
+      fAmountPreview.textContent = isAmountFormula(val) ? "⚠️ Chưa tính được, kiểm tra lại phép tính" : "";
+    }else{
+      fAmount.setCustomValidity("");
+      fAmountPreview.textContent = isAmountFormula(val) ? ("= " + money(result)) : "";
+    }
+  }
+  fAmount.addEventListener("input", updateAmountValidity);
+  fAmount.addEventListener("blur", updateAmountValidity);
 
   fCategory.innerHTML = CATS.map(c => '<option value="' + c.id + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</option>').join("");
   fCategory.addEventListener("change", updateCategoryHint);
@@ -1634,7 +1683,9 @@
     submitBtn.textContent = mode === "edit" ? "Lưu thay đổi" : "Thêm vào sổ";
     populateDayOptions(entry ? entry.day : null);
     fName.value = entry ? entry.name : "";
-    fAmount.value = entry ? entry.amount : "";
+    fAmount.value = entry ? (entry.amountFormula || entry.amount) : "";
+    fAmount.setCustomValidity("");
+    updateAmountValidity();
     fCategory.value = entry ? entry.category : "ca_nhan";
     fNote.value = entry ? (entry.note || "") : "";
     updateCategoryHint();
@@ -1766,9 +1817,15 @@
 
   function saveEntryFromForm(){
     try{
+      updateAmountValidity();
       if(typeof entryForm.reportValidity === "function" && !entryForm.reportValidity()) return;
       const day = Math.max(1, Math.min(daysInMonthKey(currentMonthKey), Number(fDay.value) || 1));
-      const amount = Number(fAmount.value) || 0;
+      const rawAmountInput = fAmount.value.trim();
+      const evaluated = evalAmountExpr(rawAmountInput);
+      const amount = (evaluated !== null && !isNaN(evaluated)) ? evaluated : 0;
+      // Chỉ lưu công thức gốc nếu người dùng thực sự gõ 1 phép tính (vd. "10+20"),
+      // để lần "Sửa" sau app hiện lại đúng công thức đó thay vì chỉ hiện con số 30.
+      const amountFormula = isAmountFormula(rawAmountInput) ? rawAmountInput : "";
       const name = fName.value.trim() || "Khoản chi";
       const category = fCategory.value;
       const note = fNote.value.trim();
@@ -1782,7 +1839,7 @@
           false,
           () => {
             try{
-              const updated = Object.assign({}, entries.find(en => en.id === id), { day, name, amount, category, note, updatedAt: Date.now() });
+              const updated = Object.assign({}, entries.find(en => en.id === id), { day, name, amount, amountFormula, category, note, updatedAt: Date.now() });
               entries = entries.map(en => en.id === id ? updated : en);
               commit();
               closeModal();
@@ -1792,7 +1849,7 @@
           }
         );
       }else{
-        const newEntry = { id: "e_" + Date.now(), day, name, amount, category, note, updatedAt: Date.now() };
+        const newEntry = { id: "e_" + Date.now(), day, name, amount, amountFormula, category, note, updatedAt: Date.now() };
         entries.push(newEntry);
         commit();
         closeModal();
@@ -1928,7 +1985,7 @@
   })();
 
   // ---------- Backup: export / import ----------
-  const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú"];
+  const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú", "Công thức"];
 
   document.getElementById("exportBtn").addEventListener("click", () => {
     closeMenuPanel();
@@ -1944,9 +2001,9 @@
         const rows = (monthsData[monthKey] || [])
           .slice()
           .sort((a,b) => (Number(a.day)||0) - (Number(b.day)||0))
-          .map(e => [e.day, e.name, e.amount, e.category, e.id, e.updatedAt || 0, e.note || ""]);
+          .map(e => [e.day, e.name, e.amount, e.category, e.id, e.updatedAt || 0, e.note || "", e.amountFormula || ""]);
         const ws = XLSX.utils.aoa_to_sheet([XLSX_HEADER].concat(rows));
-        ws["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:16},{wch:28}];
+        ws["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:16},{wch:28},{wch:16}];
         // Tên sheet Excel tối đa 31 ký tự, không chứa : \ / ? * [ ] — mã tháng "2026-07" luôn an toàn.
         XLSX.utils.book_append_sheet(wb, ws, monthKey.slice(0, 31));
       });
@@ -1994,7 +2051,8 @@
               category: String(row[3] || "ca_nhan").trim() || "ca_nhan",
               id: String(row[4] || "").trim() || ("e_" + Date.now() + "_" + i),
               updatedAt: Number(row[5]) || Date.now(),
-              note: String(row[6] || "").trim()
+              note: String(row[6] || "").trim(),
+              amountFormula: String(row[7] || "").trim()
             }));
           parsedMonths[monthKey] = entriesForMonth;
         });
