@@ -1034,13 +1034,13 @@
   // 2) Đặt SHEET_SYNC_TOKEN trùng với giá trị SECRET_TOKEN trong file Code.gs.
   // Google Sheet là nguồn dữ liệu chính — localStorage chỉ dùng làm LỚP ĐỆM AN TOÀN
   // (đề phòng mất mạng giữa chừng), không phải nơi lưu trữ chính thức.
-  const SHEET_SYNC_URL = "";
-  const SHEET_SYNC_TOKEN = "";
+  const SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbxCoDLzaz33EDqGHaP-1Q82_QLDwDzRNd7b_xV_Q47kxRG4wYIq1DBJweEEFPRXZ5dW/exec";
+  const SHEET_SYNC_TOKEN = "chitieu-2026-khoa2k";
 
   // ---------- Đăng nhập Google (bắt buộc) ----------
   // 3) Dán Google OAuth Client ID (loại "Web application") vào đây.
   //    Danh sách email được phép đăng nhập phải khớp với ALLOWED_EMAILS trong Code.gs.
-  const GOOGLE_CLIENT_ID = "";
+  const GOOGLE_CLIENT_ID = "720144060509-anhh4inbkjq5pnac30f6gi0op8mls7cl.apps.googleusercontent.com";
   const CACHE_KEY = "so_chi_tieu:cache:v1";
   const QUEUE_KEY = "so_chi_tieu:queue:v1";
   const LAST_SYNC_KEY = "so_chi_tieu:last_sync_at";
