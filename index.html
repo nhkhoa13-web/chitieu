@@ -54,6 +54,11 @@
   }
   .wrap{ max-width:760px; margin:0 auto; }
 
+  #particleNetwork{
+    position:fixed; inset:0; width:100%; height:100%; z-index:-1;
+    pointer-events:none; display:block;
+  }
+
   /* header */
   header.top{
     display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:10px;
@@ -608,6 +613,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+  <canvas id="particleNetwork" aria-hidden="true"></canvas>
   <div class="auth-gate" id="authGate">
     <div class="auth-gate-card">
       <div class="auth-gate-icon">
@@ -2882,6 +2888,270 @@
   // ---------- Init ----------
   initGoogleSignIn();
 })();
+
+// ================== Hiệu ứng nền: Particle Network ==================
+// Toàn bộ nằm gọn trong hàm initParticleNetwork() — không đụng vào state/logic sổ
+// chi tiêu. Muốn gỡ hiệu ứng: xoá hàm này (và lệnh gọi initParticleNetwork() ngay
+// dưới nó) cùng thẻ <canvas id="particleNetwork"> trong <body> là sạch, không ảnh
+// hưởng gì đến phần còn lại của app.
+function initParticleNetwork(){
+  const canvas = document.getElementById("particleNetwork");
+  if(!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext("2d", { alpha: true });
+  if(!ctx) return;
+
+  const reduceMotionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  let reduceMotion = !!(reduceMotionQuery && reduceMotionQuery.matches);
+
+  let width = 0, height = 0, dpr = 1;
+  let rafId = null;
+  let running = false;
+  let lastTime = 0;
+  let mouseX = -9999, mouseY = -9999; // để xa màn hình -> mặc định không có lực né nào cả
+
+  // ---------- Màu theo theme (đọc từ CSS variables sẵn có của app) ----------
+  // Chỉ dùng đúng 2 màu chủ đạo: cyan (--chong) và hồng (--vk) — không thêm màu khác.
+  const PALETTE_VARS = ["--chong-rgb", "--vk-rgb"];
+  let palette = ["41,231,240", "247,49,143"];
+  function refreshColors(){
+    const cs = getComputedStyle(document.documentElement);
+    palette = PALETTE_VARS.map((v, i) => (cs.getPropertyValue(v) || palette[i]).trim());
+  }
+  // Cyan chiếm đa số, hồng chỉ xuất hiện làm điểm nhấn hiếm (~15% số hạt).
+  function pickColorIndex(){ return Math.random() < 0.85 ? 0 : 1; }
+
+  // ---------- Cấp phát 1 lần duy nhất (Typed Arrays), KHÔNG tạo mới mỗi khung hình ----------
+  // Trần hạt: mobile ≤60, desktop ≤140 — cấp phát sẵn ở mức trần lớn nhất (140),
+  // chỉ dùng "activeCount" phần tử đầu mảng theo mật độ thực tế của màn hình hiện tại.
+  const MAX_CAP = 140;
+  const px = new Float32Array(MAX_CAP);     // vị trí X
+  const py = new Float32Array(MAX_CAP);     // vị trí Y
+  const pvx = new Float32Array(MAX_CAP);    // vận tốc hiệu dụng X (trôi nền + né chuột, có easing)
+  const pvy = new Float32Array(MAX_CAP);    // vận tốc hiệu dụng Y
+  const pangle = new Float32Array(MAX_CAP); // hướng trôi hiện tại (radian) — tự đổi rất chậm mỗi khung hình để quỹ đạo cong mềm mại, không đi thẳng cứng nhắc
+  const pspeed = new Float32Array(MAX_CAP); // tốc độ trôi nền của từng hạt (hằng số riêng mỗi hạt)
+  const pr = new Float32Array(MAX_CAP);     // bán kính hạt
+  const pcolor = new Uint8Array(MAX_CAP);   // chỉ số màu (0/1 -> palette)
+  let activeCount = 0;
+
+  const WANDER = 0.03; // biên độ đổi hướng ngẫu nhiên mỗi khung hình -> quỹ đạo cong nhẹ, mượt, không rời rạc
+
+  function initParticleAt(i){
+    px[i] = Math.random() * width;
+    py[i] = Math.random() * height;
+    pangle[i] = Math.random() * Math.PI * 2;
+    pspeed[i] = 0.12 + Math.random() * 0.20;
+    pvx[i] = Math.cos(pangle[i]) * pspeed[i];
+    pvy[i] = Math.sin(pangle[i]) * pspeed[i];
+    pr[i] = 1.6 + Math.random() * 1.8;
+    pcolor[i] = pickColorIndex();
+  }
+
+  // Mật độ hạt tự tính theo diện tích màn hình, có trần riêng cho mobile/desktop.
+  function targetCount(){
+    const area = width * height;
+    const isSmall = width < 640;
+    const cap = isSmall ? 60 : 140;
+    return Math.max(24, Math.min(cap, Math.round(area / 9000)));
+  }
+
+  // ---------- Spatial grid: gom hạt vào ô lưới để chỉ so khoảng cách với hạt LÂN CẬN ----------
+  // thay vì so mọi cặp hạt (O(n²) -> gần O(n)) — hiệu quả rõ khi số hạt tăng lên gần trần.
+  const MAX_LINK_DIST = 118;
+  const MAX_LINK_DIST_SQ = MAX_LINK_DIST * MAX_LINK_DIST;
+  const CELL_SIZE = MAX_LINK_DIST;
+  let gridCols = 1, gridRows = 1;
+  let gridCells = []; // mảng các mảng (reuse) — mỗi ô chỉ set length = 0 mỗi khung hình, không tạo mảng mới
+
+  function rebuildGridShape(){
+    gridCols = Math.max(1, Math.ceil(width / CELL_SIZE));
+    gridRows = Math.max(1, Math.ceil(height / CELL_SIZE));
+    const total = gridCols * gridRows;
+    gridCells = new Array(total);
+    for(let i = 0; i < total; i++) gridCells[i] = [];
+  }
+  function cellIndexOf(x, y){
+    let cx = (x / CELL_SIZE) | 0, cy = (y / CELL_SIZE) | 0;
+    if(cx < 0) cx = 0; else if(cx >= gridCols) cx = gridCols - 1;
+    if(cy < 0) cy = 0; else if(cy >= gridRows) cy = gridRows - 1;
+    return cy * gridCols + cx;
+  }
+
+  // ---------- Resize (debounce ở nơi gọi) ----------
+  function resize(){
+    const rect = canvas.getBoundingClientRect();
+    width = Math.max(1, Math.round(rect.width || window.innerWidth));
+    height = Math.max(1, Math.round(rect.height || window.innerHeight));
+    dpr = Math.min(window.devicePixelRatio || 1, 2); // trần DPR = 2 -> canvas đỡ nặng trên màn Retina/độ phân giải cao
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const want = targetCount();
+    if(want > activeCount){
+      for(let i = activeCount; i < want; i++) initParticleAt(i);
+    }
+    activeCount = want;
+    // Giữ hạt trong khung hình mới sau khi xoay màn hình / đổi kích thước cửa sổ.
+    for(let i = 0; i < activeCount; i++){
+      if(px[i] > width) px[i] = Math.random() * width;
+      if(py[i] > height) py[i] = Math.random() * height;
+    }
+
+    rebuildGridShape();
+  }
+
+  // ---------- Vòng lặp animate (không cấp phát object/mảng mới trong này) ----------
+  const REPEL_RADIUS = 90;
+  const REPEL_RADIUS_SQ = REPEL_RADIUS * REPEL_RADIUS;
+  const REPEL_STRENGTH = 2.2;
+  const EASE = 0.08;
+
+  function renderFrame(dt){
+    ctx.clearRect(0, 0, width, height);
+
+    // Cập nhật vị trí: hướng trôi tự đổi rất chậm (wander) để quỹ đạo cong mềm mại thay vì đi thẳng
+    // cứng nhắc, cộng thêm né nhẹ theo con trỏ (easing về lại hướng trôi nền khi rời xa).
+    for(let i = 0; i < activeCount; i++){
+      pangle[i] += (Math.random() - 0.5) * WANDER * dt;
+
+      let targetVx = Math.cos(pangle[i]) * pspeed[i];
+      let targetVy = Math.sin(pangle[i]) * pspeed[i];
+      const dx = px[i] - mouseX, dy = py[i] - mouseY;
+      const distSq = dx * dx + dy * dy;
+      if(distSq < REPEL_RADIUS_SQ && distSq > 0.0001){
+        const dist = Math.sqrt(distSq);
+        const force = (1 - dist / REPEL_RADIUS) * REPEL_STRENGTH;
+        targetVx += (dx / dist) * force;
+        targetVy += (dy / dist) * force;
+      }
+      pvx[i] += (targetVx - pvx[i]) * EASE;
+      pvy[i] += (targetVy - pvy[i]) * EASE;
+
+      let x = px[i] + pvx[i] * dt;
+      let y = py[i] + pvy[i] * dt;
+      // Nảy nhẹ khi chạm mép màn hình (thay vì biến mất/dịch chuyển tức thời sang phía đối diện):
+      // phản chiếu góc trôi qua trục chạm, quỹ đạo bật lại vẫn mượt chứ không giật cục.
+      const r = pr[i];
+      if(x < r){ x = r; pangle[i] = Math.PI - pangle[i]; }
+      else if(x > width - r){ x = width - r; pangle[i] = Math.PI - pangle[i]; }
+      if(y < r){ y = r; pangle[i] = -pangle[i]; }
+      else if(y > height - r){ y = height - r; pangle[i] = -pangle[i]; }
+      px[i] = x; py[i] = y;
+    }
+
+    // Gom vào lưới (reuse mảng có sẵn, chỉ reset length).
+    for(let c = 0; c < gridCells.length; c++) gridCells[c].length = 0;
+    for(let i = 0; i < activeCount; i++){
+      gridCells[cellIndexOf(px[i], py[i])].push(i);
+    }
+
+    // Vẽ đường nối — chỉ so với hạt trong 3x3 ô lưới lân cận thay vì toàn bộ hạt còn lại.
+    ctx.lineWidth = 1;
+    for(let cy = 0; cy < gridRows; cy++){
+      for(let cx = 0; cx < gridCols; cx++){
+        const cell = gridCells[cy * gridCols + cx];
+        for(let k = 0; k < cell.length; k++){
+          const i = cell[k];
+          for(let ny = Math.max(0, cy - 1); ny <= Math.min(gridRows - 1, cy + 1); ny++){
+            for(let nx = Math.max(0, cx - 1); nx <= Math.min(gridCols - 1, cx + 1); nx++){
+              const neighborCell = gridCells[ny * gridCols + nx];
+              for(let m = 0; m < neighborCell.length; m++){
+                const j = neighborCell[m];
+                if(j <= i) continue; // tránh vẽ 2 lần cùng 1 cặp
+                const dx = px[i] - px[j], dy = py[i] - py[j];
+                const distSq = dx * dx + dy * dy;
+                if(distSq > MAX_LINK_DIST_SQ) continue;
+                const alpha = (1 - Math.sqrt(distSq) / MAX_LINK_DIST) * 0.16;
+                if(alpha <= 0.004) continue;
+                ctx.strokeStyle = "rgba(" + palette[0] + "," + alpha.toFixed(3) + ")";
+                ctx.beginPath();
+                ctx.moveTo(px[i], py[i]);
+                ctx.lineTo(px[j], py[j]);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Vẽ hạt đè lên trên các đường nối.
+    for(let i = 0; i < activeCount; i++){
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(" + palette[pcolor[i]] + ",0.55)";
+      ctx.arc(px[i], py[i], pr[i], 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function step(now){
+    if(!running) return;
+    const dt = lastTime ? Math.min(2.5, (now - lastTime) / 16.6667) : 1; // chuẩn hoá ~60fps, chặn bước nhảy khi tab quay lại
+    lastTime = now;
+    renderFrame(dt);
+    rafId = requestAnimationFrame(step);
+  }
+
+  function start(){
+    if(running || reduceMotion) return;
+    running = true;
+    lastTime = 0;
+    rafId = requestAnimationFrame(step);
+  }
+  function stop(){
+    running = false;
+    if(rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // ---------- Sự kiện ----------
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resize();
+      if(reduceMotion) renderFrame(0); // giảm chuyển động -> vẽ lại đúng 1 khung tĩnh sau khi đổi kích thước
+    }, 150); // gộp các lần resize liên tiếp, tránh tính lại lưới/mật độ quá nhiều lần khi kéo cửa sổ
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if(document.hidden) stop(); else start();
+  });
+
+  // Hạt "né nhẹ" theo con trỏ chuột / ngón tay — canvas vẫn pointer-events:none nên
+  // phải lắng nghe sự kiện trên window để không chặn thao tác của các phần tử bên dưới.
+  window.addEventListener("mousemove", (e) => { mouseX = e.clientX; mouseY = e.clientY; }, { passive: true });
+  window.addEventListener("touchmove", (e) => {
+    const t = e.touches && e.touches[0];
+    if(t){ mouseX = t.clientX; mouseY = t.clientY; }
+  }, { passive: true });
+  window.addEventListener("touchend", () => { mouseX = -9999; mouseY = -9999; }, { passive: true });
+  document.addEventListener("mouseleave", () => { mouseX = -9999; mouseY = -9999; });
+
+  const themeObserver = new MutationObserver(() => {
+    refreshColors();
+    for(let i = 0; i < activeCount; i++) pcolor[i] = pickColorIndex();
+    if(reduceMotion) renderFrame(0);
+  });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  if(reduceMotionQuery && reduceMotionQuery.addEventListener){
+    reduceMotionQuery.addEventListener("change", (e) => {
+      reduceMotion = e.matches;
+      if(reduceMotion){ stop(); renderFrame(0); } else { start(); }
+    });
+  }
+
+  refreshColors();
+  resize();
+  if(reduceMotion){
+    renderFrame(0); // chỉ vẽ đúng 1 khung tĩnh, không animate — tôn trọng prefers-reduced-motion
+  }else if(!document.hidden){
+    start();
+  }
+}
+initParticleNetwork();
 </script>
 </body>
 </html>
