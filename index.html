@@ -2029,7 +2029,8 @@
   }
 
   // Tách số tiền nói ra: ưu tiên số/biểu thức viết bằng chữ số, nếu không có thì thử đọc chữ.
-  function parseSpokenAmount(raw){
+  // Hỗ trợ thêm đơn vị "triệu" (vd. "một triệu hai" -> 1.200.000đ, "một triệu" -> 1.000.000đ).
+  function parseSpokenAmountPlain(raw){
     let s = String(raw || "").toLowerCase().trim();
     s = s.replace(/\b(nghìn|ngàn|đồng|vnđ|vnd|k)\b/g, " ").trim();
     const compact = s.replace(/\s+/g, "");
@@ -2037,6 +2038,29 @@
     if(direct !== null && !isNaN(direct) && direct > 0) return direct;
     const worded = vietnameseWordsToNumber(s);
     return (worded === null || worded <= 0) ? null : worded;
+  }
+  function parseSpokenAmount(raw){
+    let s = String(raw || "").toLowerCase().trim();
+    if(/triệu/.test(s)){
+      const parts = s.split("triệu");
+      const millionsPart = parts[0].trim();
+      const remainderPart = (parts[1] || "").replace(/\b(nghìn|ngàn|đồng|vnđ|vnd|k)\b/g, " ").trim();
+      let millions = parseSpokenAmountPlain(millionsPart);
+      if(millions === null) millions = 1; // nói tắt "triệu hai" (không nói rõ "một triệu") -> mặc định 1 triệu
+      let remainder = 0;
+      if(remainderPart){
+        const remWords = remainderPart.split(/\s+/).filter(Boolean);
+        const remVal = parseSpokenAmountPlain(remainderPart);
+        if(remVal !== null){
+          // nói tắt kiểu "một triệu hai" (ý là 1 triệu HAI TRĂM nghìn) -> nếu phần dư chỉ là
+          // đúng 1 chữ số đơn (không kèm "trăm"/"mươi"/"nghìn") thì hiểu là hàng trăm nghìn.
+          const bareDigit = remWords.length === 1 && remVal < 10;
+          remainder = bareDigit ? remVal * 100 : remVal;
+        }
+      }
+      return millions * 1000 + remainder;
+    }
+    return parseSpokenAmountPlain(s);
   }
 
   // Tách ngày nói ra: hỗ trợ "hôm nay/hôm qua/hôm kia", số viết bằng số, và số viết bằng chữ.
@@ -2070,12 +2094,33 @@
   }
 
   // Tách câu nói thành các trường theo từ khoá neo, không phụ thuộc thứ tự nói.
+  // Mỗi trường có nhiều từ đồng nghĩa để hiểu được cách nói tự nhiên hơn (không bắt buộc
+  // đúng khuôn mẫu cứng như trước) — vd. "mua cà phê hết 20 chồng trả" giờ hiểu được luôn,
+  // không cần nói đủ "tên... tiền... loại...".
   const VOICE_FIELD_KEYWORDS = {
-    day: ["ngày"],
-    amount: ["tiền", "số tiền", "tiền là"],
-    name: ["tên là", "tên"],
-    payer: ["loại chi tiêu", "loại", "người thanh toán", "ai thanh toán", "ai trả", "ai tính", "danh mục"]
+    day: ["ngày", "hôm nay", "hôm qua", "hôm kia"],
+    amount: ["tiền", "số tiền", "tiền là", "giá", "hết", "mất", "tốn"],
+    name: ["tên là", "tên", "mua", "khoản"],
+    payer: [
+      "loại chi tiêu", "loại", "người thanh toán", "ai thanh toán", "ai trả", "ai mua", "ai tính", "danh mục",
+      "chồng trả", "vợ trả", "anh trả", "em trả",
+      "chồng chịu", "vợ chịu",
+      "chồng tính", "vợ tính",
+      "chồng thiếu", "vợ thiếu",
+      "chồng nợ", "vợ nợ"
+    ]
   };
+  // Các từ khoá "tự đủ nghĩa" — không cần đọc phần văn bản theo sau vì bản thân từ khoá đã
+  // mang đủ thông tin (vd. "hôm qua", "chồng trả"), khác với từ khoá cần đọc giá trị đi kèm
+  // (vd. "ngày" cần đọc số ngày theo sau, "loại" cần đọc tên danh mục theo sau).
+  const SELF_CONTAINED_KEYWORDS = {
+    day: ["hôm nay", "hôm qua", "hôm kia"],
+    payer: ["chồng trả","vợ trả","anh trả","em trả","chồng chịu","vợ chịu","chồng tính","vợ tính","chồng thiếu","vợ thiếu","chồng nợ","vợ nợ"]
+  };
+  // Từ đệm đầu câu bỏ qua khi suy luận tên khoản chi từ phần văn bản còn sót lại (dùng khi
+  // người dùng không nói rõ từ "tên"/"mua"/"khoản").
+  const LEADING_FILLER_WORDS = ["thêm", "cho", "tôi", "vào", "sổ", "khoản", "chi", "là", "cái", "một"];
+
   function firstKeywordMatch(text, keywords){
     const lower = text.toLowerCase();
     for(const kw of keywords){
@@ -2084,6 +2129,24 @@
     }
     return null;
   }
+  // Cắt bỏ các khoảng [start,end) đã "dùng rồi" khỏi văn bản gốc — dùng để suy luận tên khoản
+  // chi từ phần còn sót lại sau khi đã nhận diện ngày/số tiền/danh mục.
+  function removeTextRanges(text, ranges){
+    const sorted = ranges.slice().sort((a, b) => a[0] - b[0]);
+    let result = "", cursor = 0;
+    for(const [s, e] of sorted){
+      if(s > cursor) result += text.slice(cursor, s);
+      cursor = Math.max(cursor, e);
+    }
+    result += text.slice(cursor);
+    return result;
+  }
+  function stripLeadingFillerWords(s){
+    const words = s.trim().split(/\s+/).filter(Boolean);
+    while(words.length && LEADING_FILLER_WORDS.includes(words[0].toLowerCase())) words.shift();
+    return words.join(" ");
+  }
+
   function parseVoiceText(rawText){
     const text = String(rawText || "").trim();
     if(!text) return { ok:false, reason:"Không nghe được gì cả, thử lại nhé." };
@@ -2093,31 +2156,47 @@
       const m = firstKeywordMatch(text, VOICE_FIELD_KEYWORDS[field]);
       if(m) found[field] = m;
     }
-    if(!found.amount) return { ok:false, reason:"Không nghe rõ \"tiền\", thử nói lại có kèm cụm này." };
-    if(!found.name) return { ok:false, reason:"Không nghe rõ \"tên\" khoản chi, thử nói lại có kèm cụm này." };
+    if(!found.amount) return { ok:false, reason:"Không nghe rõ \"số tiền\", thử nói lại (vd. \"...hết 20\", \"...giá 20\", \"...tốn 20\")." };
 
     const ordered = Object.keys(found)
       .map(field => ({ field, kwStart: found[field].idx, valStart: found[field].end }))
       .sort((a, b) => a.kwStart - b.kwStart);
     const segments = {};
+    const spans = {};
     for(let i = 0; i < ordered.length; i++){
       const cur = ordered[i];
       const nextStart = (i + 1 < ordered.length) ? ordered[i + 1].kwStart : text.length;
       segments[cur.field] = text.slice(cur.valStart, nextStart).trim().replace(/^[:,.\s]+/, "").replace(/[.,\s]+$/, "");
+      // Từ khoá tự đủ nghĩa (vd. "hôm nay") -> chỉ loại đúng phần chữ của từ khoá đó khỏi
+      // văn bản dùng suy luận tên, tránh nuốt nhầm tên khoản chi nằm ngay sau nó.
+      const isSelfContained = (SELF_CONTAINED_KEYWORDS[cur.field] || []).includes(found[cur.field].kw);
+      spans[cur.field] = isSelfContained ? [cur.kwStart, found[cur.field].end] : [cur.kwStart, nextStart];
     }
 
     const amount = parseSpokenAmount(segments.amount || "");
     if(amount === null) return { ok:false, reason:"Không hiểu số tiền \"" + (segments.amount || "") + "\", thử nói rõ hơn." };
 
-    const name = (segments.name || "").trim();
+    let name = (segments.name || "").trim();
+    if(!name){
+      // Không nói rõ từ "tên"/"mua"/"khoản" -> suy luận tên từ phần văn bản còn lại sau khi
+      // đã bỏ các đoạn ngày/số tiền/danh mục và từ đệm đầu câu.
+      const consumedRanges = ["day", "amount", "payer"].filter(f => spans[f]).map(f => spans[f]);
+      const leftover = removeTextRanges(text, consumedRanges).replace(/\s+/g, " ").trim();
+      name = stripLeadingFillerWords(leftover).replace(/^[:,.\s]+/, "").replace(/[.,\s]+$/, "");
+    }
     if(!name) return { ok:false, reason:"Không nghe rõ tên khoản chi." };
 
     const totalDays = daysInMonthKey(currentMonthKey);
-    let day = segments.day ? parseSpokenDay(segments.day) : new Date().getDate();
+    const daySelfContained = found.day && SELF_CONTAINED_KEYWORDS.day.includes(found.day.kw);
+    const dayInput = daySelfContained ? found.day.kw : segments.day; // từ khoá tự đủ nghĩa -> đọc chính từ khoá, không đọc phần theo sau
+    let day = dayInput ? parseSpokenDay(dayInput) : new Date().getDate();
     if(day === null || isNaN(day)) day = new Date().getDate();
     day = Math.max(1, Math.min(totalDays, day));
 
-    const category = parseSpokenCategory(segments.payer || "");
+    // Dùng cả chính từ khoá neo (vd. "chồng trả") lẫn phần văn bản theo sau để suy luận danh
+    // mục — với các cụm tự nhiên kiểu này, thông tin nằm ngay trong từ khoá chứ không phải
+    // phần chữ theo sau nó.
+    const category = parseSpokenCategory((found.payer ? found.payer.kw + " " : "") + (segments.payer || ""));
 
     return { ok:true, day, name, amount, category };
   }
