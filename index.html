@@ -19,16 +19,6 @@
     --zero:#39FF88; --zero-rgb:57,255,136;
     --serif:'Chakra Petch', 'Inter', sans-serif; --sans:'Inter', sans-serif; --mono:'IBM Plex Mono', monospace;
   }
-  html[data-theme="light"]{
-    --bg:#EEF3F6; --surface:#FFFFFF; --surface2:#F7FAFC; --surface3:#E9EFF3;
-    --surface-glass:rgba(255,255,255,0.97);
-    --border:#D7E1E8; --border2:#C3D1DA;
-    --text:#132029; --text-hi:#071019; --text-mid:#33505E; --text-muted:#54707D; --text-dim:#728994; --text-faint:#93A6AF;
-    --chong:#0891A8; --chong-soft:#066E82; --vk:#C11F72; --vk-soft:#9A1760; --gold:#A6740E;
-    --chong-rgb:8,145,168; --chong-soft-rgb:6,110,130; --vk-rgb:193,31,114; --vk-soft-rgb:154,23,96; --gold-rgb:166,116,14;
-    --chong2:#0C6E96;
-    --zero:#0E9F5C; --zero-rgb:14,159,92;
-  }
   html, body{ transition:background-color .25s ease, color .25s ease; }
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
@@ -43,14 +33,6 @@
     background-size:34px 34px, 34px 34px, auto, auto, auto;
     background-attachment:fixed;
     padding:0 16px calc(96px + env(safe-area-inset-bottom, 0px));
-  }
-  html[data-theme="light"] body{
-    background-image:
-      linear-gradient(rgba(8,145,168,0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(8,145,168,0.06) 1px, transparent 1px),
-      radial-gradient(circle at 12% 0%, rgba(8,145,168,0.14), transparent 42%),
-      radial-gradient(circle at 92% 8%, rgba(193,31,114,0.11), transparent 40%),
-      radial-gradient(circle at 50% 100%, rgba(8,145,168,0.07), transparent 55%);
   }
   .wrap{ max-width:760px; margin:0 auto; }
 
@@ -112,7 +94,6 @@
     background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:10px;
     z-index:60; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
   }
-  html[data-theme="light"] .month-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
   .month-panel.show{ display:block; }
   .month-list{ display:flex; flex-direction:column; gap:3px; max-height:220px; overflow-y:auto; margin-bottom:10px; }
   .auto-pull-toggle{
@@ -145,7 +126,6 @@
     background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:10px;
     z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
   }
-  html[data-theme="light"] .ym-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
   .ym-panel.show{ display:block; }
   .ym-year-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
   .ym-year-nav{
@@ -174,18 +154,6 @@
     background:var(--surface2); border:1px solid var(--border2); border-radius:12px; padding:6px;
     z-index:60; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
   }
-  html[data-theme="light"] .menu-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
-
-  /* Theme sáng: các hiệu ứng "glow" neon (thiết kế cho nền tối) đổi thành shadow nhẹ, sạch sẽ hơn */
-  html[data-theme="light"] .eyebrow{ text-shadow:none; }
-  html[data-theme="light"] .btn-primary{ box-shadow:0 2px 8px rgba(20,30,45,0.16); }
-  html[data-theme="light"] .fab-add{ box-shadow:0 6px 16px rgba(20,30,45,0.22); }
-  html[data-theme="light"] .hero{ box-shadow:0 1px 0 1px rgba(20,30,45,0.04), 0 16px 40px -22px rgba(20,30,45,0.25); }
-  html[data-theme="light"] .balance-number.to-chong,
-  html[data-theme="light"] .balance-number.to-vk{ text-shadow:none; }
-  html[data-theme="light"] .modal{ box-shadow:0 20px 48px -18px rgba(20,30,45,0.32); }
-  html[data-theme="light"] .card{ box-shadow:0 2px 10px rgba(20,30,45,0.06); }
-  html[data-theme="light"] .day-bar.peak{ box-shadow:none; }
   .menu-panel.show{ display:block; }
   .menu-item{
     display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:transparent;
@@ -537,7 +505,6 @@
     background:var(--surface2); border:1px solid var(--border2); border-radius:14px; padding:12px;
     z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
   }
-  html[data-theme="light"] .day-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
   .day-panel.show{ display:block; }
   .day-panel-title{ font-family:var(--mono); font-size:12px; font-weight:700; color:var(--text-mid); text-align:center; margin-bottom:9px; }
   .day-grid-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px; }
@@ -565,7 +532,6 @@
     z-index:70; display:none; box-shadow:0 16px 40px rgba(0,0,0,0.45); backdrop-filter:blur(16px);
     max-height:340px; overflow-y:auto;
   }
-  html[data-theme="light"] .cat-panel{ box-shadow:0 16px 40px rgba(30,40,60,0.14); }
   .cat-panel.show{ display:block; }
   .cat-option{
     display:flex; align-items:center; gap:10px; width:100%; padding:10px 10px; border-radius:9px; border:none;
@@ -752,11 +718,6 @@
             <button type="button" class="menu-item" id="syncNowBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
               <span id="syncMenuLabel">Đồng bộ</span>
-            </button>
-            <div class="menu-divider"></div>
-            <button type="button" class="menu-item" id="themeToggle">
-              <span class="menu-item-icon"><svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
-              <span id="themeMenuLabel">Giao diện tối</span>
             </button>
             <div class="menu-divider"></div>
             <button type="button" class="menu-item menu-item-danger" id="signOutBtn">
@@ -2432,38 +2393,6 @@
     });
   })();
 
-  // ---------- Theme toggle ----------
-  const themeToggle = document.getElementById("themeToggle");
-  const themeIcon = document.getElementById("themeIcon");
-  const THEME_KEY = "so_chi_tieu:theme";
-  const sunPath = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
-  const moonPath = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>';
-
-  function applyTheme(theme){
-    const label = document.getElementById("themeMenuLabel");
-    if(theme === "light"){
-      document.documentElement.setAttribute("data-theme", "light");
-      themeIcon.innerHTML = moonPath;
-      if(label) label.textContent = "Giao diện sáng";
-    }else{
-      document.documentElement.removeAttribute("data-theme");
-      themeIcon.innerHTML = sunPath;
-      if(label) label.textContent = "Giao diện tối";
-    }
-  }
-
-  (() => {
-    let theme = "dark";
-    try{
-      const stored = localStorage.getItem(THEME_KEY);
-      if(stored === "light" || stored === "dark") theme = stored;
-      else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "light";
-    }catch(e){
-      if(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) theme = "light";
-    }
-    applyTheme(theme);
-  })();
-
   // ---------- Backup: export / import ----------
   const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú", "Công thức"];
 
@@ -2565,14 +2494,6 @@
       }catch(err){ showErrorBanner("import: " + err.message); }
     };
     reader.readAsArrayBuffer(file);
-  });
-
-  themeToggle.addEventListener("click", () => {
-    const isLight = document.documentElement.getAttribute("data-theme") === "light";
-    const next = isLight ? "dark" : "light";
-    applyTheme(next);
-    try{ localStorage.setItem(THEME_KEY, next); }catch(e){ /* ignore */ }
-    closeMenuPanel();
   });
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {
@@ -3334,13 +3255,6 @@ function initParticleNetwork(){
   }, { passive: true });
   window.addEventListener("touchend", () => { mouseX = -9999; mouseY = -9999; }, { passive: true });
   document.addEventListener("mouseleave", () => { mouseX = -9999; mouseY = -9999; });
-
-  const themeObserver = new MutationObserver(() => {
-    refreshColors();
-    for(let i = 0; i < activeCount; i++) pcolor[i] = pickColorIndex();
-    if(reduceMotion) renderFrame(0);
-  });
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   if(reduceMotionQuery && reduceMotionQuery.addEventListener){
     reduceMotionQuery.addEventListener("change", (e) => {
