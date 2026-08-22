@@ -654,6 +654,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+  <!-- Sprite icon dùng chung (sửa/xoá) cho các dòng trong sổ chi tiêu — định nghĩa 1 lần duy nhất,
+       tham chiếu lại bằng <use> thay vì lặp lại toàn bộ <path> ở mỗi dòng. Khi sổ có nhiều khoản chi,
+       renderLedger() dựng lại toàn bộ danh sách bằng innerHTML mỗi khi gõ tìm kiếm/đổi sắp xếp/thêm-sửa-xoá,
+       nên giảm được lượng markup lặp lại giúp việc dựng lại danh sách nhẹ và mượt hơn rõ rệt. -->
+  <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <symbol id="icon-edit-sprite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+    </symbol>
+    <symbol id="icon-trash-sprite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/>
+    </symbol>
+  </svg>
   <canvas id="particleNetwork" aria-hidden="true"></canvas>
   <div class="auth-gate" id="authGate">
     <div class="auth-gate-card">
@@ -1040,6 +1052,22 @@
 <script>
 (function(){
   "use strict";
+
+  // Tạm dừng nền hạt (particle network) khi có lớp phủ toàn màn hình đang mở (modal thêm/sửa,
+  // hộp xác nhận, chi tiết danh mục/ngày) — lúc đó nó bị che kín 100%, vẽ lại mỗi khung hình là
+  // phí CPU vô ích, đúng lúc người dùng đang gõ liệu/thao tác nên dễ cảm nhận giật nhất.
+  // Dùng bộ đếm (không phải cờ boolean) để an toàn nếu lỡ có 2 lớp phủ mở lồng nhau.
+  // Bắt tay với initParticleNetwork() (định nghĩa riêng, cuối file) qua window.__particleStart/Stop
+  // vì 2 khối code này cố tình tách biệt scope với nhau (không đụng vào state/logic của nhau).
+  let __particlePauseDepth = 0;
+  function pauseParticleBg(){
+    __particlePauseDepth++;
+    if(window.__particleStop) window.__particleStop();
+  }
+  function resumeParticleBg(){
+    __particlePauseDepth = Math.max(0, __particlePauseDepth - 1);
+    if(__particlePauseDepth === 0 && window.__particleStart) window.__particleStart();
+  }
 
   function showErrorBanner(msg){
     let b = document.getElementById("jsErrorBanner");
@@ -1655,11 +1683,11 @@
         '<div class="t-row-wrap" data-id="' + e.id + '">' +
           '<div class="t-swipe-actions">' +
             '<button type="button" class="swipe-btn swipe-edit" data-action="edit" aria-label="Sửa">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+              '<svg width="16" height="16"><use href="#icon-edit-sprite"></use></svg>' +
               '<span>Sửa</span>' +
             '</button>' +
             '<button type="button" class="swipe-btn swipe-delete" data-action="delete" aria-label="Xoá">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>' +
+              '<svg width="16" height="16"><use href="#icon-trash-sprite"></use></svg>' +
               '<span>Xoá</span>' +
             '</button>' +
           '</div>' +
@@ -1670,10 +1698,10 @@
             '<span class="t-amt">' + money(e.amount) + '</span>' +
             '<span class="t-actions">' +
               '<button type="button" class="icon-btn" data-action="edit" aria-label="Sửa">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>' +
+                '<svg width="14" height="14"><use href="#icon-edit-sprite"></use></svg>' +
               '</button>' +
               '<button type="button" class="icon-btn" data-action="delete" aria-label="Xoá">' +
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>' +
+                '<svg width="14" height="14"><use href="#icon-trash-sprite"></use></svg>' +
               '</button>' +
             '</span>' +
           '</div>' +
@@ -1792,6 +1820,7 @@
     updateCategoryHint();
     buildCatList(fCategory.value);
     modalOverlay.classList.add("show");
+    pauseParticleBg();
   }
   function closeModal(){
     modalOverlay.classList.remove("show");
@@ -1799,6 +1828,7 @@
     entryForm.reset();
     closeDayPanel();
     closeCatPanel();
+    resumeParticleBg();
   }
 
   document.getElementById("addBtn").addEventListener("click", () => openModal("add", null));
@@ -1822,10 +1852,12 @@
     confirmOkBtn.className = "btn-primary" + (danger ? " danger" : "");
     confirmCallback = onConfirm;
     confirmOverlay.classList.add("show");
+    pauseParticleBg();
   }
   function closeConfirm(){
     confirmOverlay.classList.remove("show");
     confirmCallback = null;
+    resumeParticleBg();
   }
   confirmOkBtn.addEventListener("click", () => {
     const cb = confirmCallback;
@@ -1877,7 +1909,12 @@
           );
         }).join("");
 
+    // openEntryDetail cũng được gọi lại khi bấm nút "ngày trước/sau" lúc hộp thoại ĐANG mở
+    // (xem catDetailPrevBtn/catDetailNextBtn bên dưới) -> chỉ pause khi thật sự đang mở mới,
+    // tránh pause nhiều lần liên tiếp mà chỉ resume 1 lần khi đóng (làm nền hạt bị đứng im luôn).
+    const wasAlreadyOpen = catDetailOverlay.classList.contains("show");
     catDetailOverlay.classList.add("show");
+    if(!wasAlreadyOpen) pauseParticleBg();
   }
   function openCatDetail(catId){
     const cat = catById[catId];
@@ -1901,7 +1938,7 @@
   }
   catDetailPrevBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay - 1); });
   catDetailNextBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay + 1); });
-  function closeCatDetail(){ catDetailOverlay.classList.remove("show"); }
+  function closeCatDetail(){ catDetailOverlay.classList.remove("show"); resumeParticleBg(); }
   document.getElementById("catGrid").addEventListener("click", (e) => {
     const item = e.target.closest(".cat-item");
     if(!item) return;
@@ -3191,7 +3228,20 @@ function initParticleNetwork(){
     }
 
     // Vẽ đường nối — chỉ so với hạt trong 3x3 ô lưới lân cận thay vì toàn bộ hạt còn lại.
+    // Gom các đường nối theo "bậc" độ mờ (alpha) rồi vẽ gộp 1 lần/bậc bằng Path2D, thay vì
+    // beginPath+strokeStyle+stroke riêng cho TỪNG đường (có thể lên tới hàng trăm đường/khung
+    // hình) — đổi hàng trăm lệnh vẽ + hàng trăm lần dựng chuỗi màu (toFixed/nối chuỗi) mỗi khung
+    // hình thành tối đa 12 lệnh stroke() cố định, không phụ thuộc số hạt. Mắt thường không phân
+    // biệt được 12 bậc mờ liền kề nên hình ảnh hiển thị ra không đổi.
     ctx.lineWidth = 1;
+    const LINK_ALPHA_BUCKETS = 12;
+    let linkPaths = renderFrame._linkPaths;
+    if(!linkPaths){ linkPaths = renderFrame._linkPaths = []; }
+    for(let b = 0; b < LINK_ALPHA_BUCKETS; b++) linkPaths[b] = new Path2D();
+    let anyLinkInBucket = renderFrame._anyLinkInBucket;
+    if(!anyLinkInBucket){ anyLinkInBucket = renderFrame._anyLinkInBucket = new Array(LINK_ALPHA_BUCKETS); }
+    for(let b = 0; b < LINK_ALPHA_BUCKETS; b++) anyLinkInBucket[b] = false;
+
     for(let cy = 0; cy < gridRows; cy++){
       for(let cx = 0; cx < gridCols; cx++){
         const cell = gridCells[cy * gridCols + cx];
@@ -3208,16 +3258,22 @@ function initParticleNetwork(){
                 if(distSq > MAX_LINK_DIST_SQ) continue;
                 const alpha = (1 - Math.sqrt(distSq) / MAX_LINK_DIST) * 0.16;
                 if(alpha <= 0.004) continue;
-                ctx.strokeStyle = "rgba(" + palette[0] + "," + alpha.toFixed(3) + ")";
-                ctx.beginPath();
-                ctx.moveTo(px[i], py[i]);
-                ctx.lineTo(px[j], py[j]);
-                ctx.stroke();
+                let bIdx = (alpha / 0.16 * LINK_ALPHA_BUCKETS) | 0;
+                if(bIdx >= LINK_ALPHA_BUCKETS) bIdx = LINK_ALPHA_BUCKETS - 1;
+                linkPaths[bIdx].moveTo(px[i], py[i]);
+                linkPaths[bIdx].lineTo(px[j], py[j]);
+                anyLinkInBucket[bIdx] = true;
               }
             }
           }
         }
       }
+    }
+    for(let b = 0; b < LINK_ALPHA_BUCKETS; b++){
+      if(!anyLinkInBucket[b]) continue;
+      const bucketAlpha = ((b + 0.5) / LINK_ALPHA_BUCKETS) * 0.16;
+      ctx.strokeStyle = "rgba(" + palette[0] + "," + bucketAlpha.toFixed(3) + ")";
+      ctx.stroke(linkPaths[b]);
     }
 
     // Vẽ hạt đè lên trên các đường nối.
@@ -3249,6 +3305,10 @@ function initParticleNetwork(){
     if(rafId) cancelAnimationFrame(rafId);
     rafId = null;
   }
+  // Cho phần app chính (modal/dialog) gọi tạm dừng/tiếp tục khi có lớp phủ toàn màn hình che kín
+  // nền hạt — xem pauseParticleBg()/resumeParticleBg() ở đầu file.
+  window.__particleStart = start;
+  window.__particleStop = stop;
 
   // ---------- Sự kiện ----------
   let resizeTimer = null;
