@@ -4,6 +4,28 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sổ chi tiêu chung</title>
+<meta name="theme-color" content="#080B10" id="metaThemeColor" />
+<script>
+  // Áp dụng giao diện sáng/tối NGAY LẬP TỨC, trước khi trang vẽ khung hình đầu tiên,
+  // để tránh hiện tượng "nháy" sai màu (FOUC) khi tải lại trang.
+  // Ưu tiên lựa chọn đã lưu của người dùng; nếu chưa từng chọn, dùng theo cấu hình
+  // sáng/tối của hệ điều hành/trình duyệt; nếu không xác định được thì mặc định TỐI
+  // (giữ đúng giao diện gốc của app).
+  (function () {
+    try {
+      var saved = localStorage.getItem("so_chi_tieu:theme");
+      var theme =
+        saved === "light" || saved === "dark"
+          ? saved
+          : window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -19,6 +41,52 @@
     --zero:#39FF88; --zero-rgb:57,255,136;
     --serif:'Chakra Petch', 'Inter', sans-serif; --sans:'Inter', sans-serif; --mono:'IBM Plex Mono', monospace;
   }
+
+  /* ============ Giao diện SÁNG (Light theme) ============
+     Kích hoạt qua thuộc tính data-theme="light" trên thẻ <html> (đổi bằng nút
+     mặt trời/mặt trăng trên header). Giữ nguyên toàn bộ 2 tông màu thương hiệu
+     (cyan "Chồng" / hồng "Vợ" + vàng gold) nhưng đậm hơn để đủ tương phản khi
+     đọc trên nền sáng, đồng thời làm phẳng bớt hiệu ứng neon vốn chỉ hợp nền tối. */
+  html[data-theme="light"]{
+    --bg:#F2F5F9; --surface:#FFFFFF; --surface2:#FFFFFF; --surface3:#EEF2F7;
+    --surface-glass:rgba(255,255,255,0.82);
+    --border:#E1E7EF; --border2:#CDD7E3;
+    --text:#28323F; --text-hi:#0F1720; --text-mid:#48566A; --text-muted:#66768A; --text-dim:#7C8CA0; --text-faint:#93A2B4;
+    --chong:#0C8599; --chong-soft:#0EA5BE; --vk:#D2266E; --vk-soft:#DB4D8D; --gold:#B0761E;
+    --chong-rgb:12,133,153; --chong-soft-rgb:14,165,190; --vk-rgb:210,38,110; --vk-soft-rgb:219,77,141; --gold-rgb:176,118,30;
+    --chong2:#2660D6;
+    --zero:#0E9755; --zero-rgb:14,151,85;
+  }
+  /* Nền lưới + quầng sáng góc màn hình: bản sáng dịu hơn hẳn để không bị chói/loè. */
+  html[data-theme="light"] body{
+    background-image:
+      linear-gradient(rgba(12,133,153,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(12,133,153,0.05) 1px, transparent 1px),
+      radial-gradient(circle at 12% 0%, rgba(12,133,153,0.07), transparent 42%),
+      radial-gradient(circle at 92% 8%, rgba(210,38,110,0.06), transparent 40%),
+      radial-gradient(circle at 50% 100%, rgba(12,133,153,0.04), transparent 55%);
+  }
+  /* Chữ trên nút/nền gradient cyan→xanh dương giờ đậm hơn (dùng làm chữ được) nên
+     đổi chữ trong nút từ đen sang trắng để vẫn đủ tương phản ở giao diện sáng. */
+  html[data-theme="light"] .btn-primary,
+  html[data-theme="light"] .fab-add{ color:#FFFFFF; }
+  html[data-theme="light"] .btn-primary{ box-shadow:0 4px 14px rgba(var(--chong-rgb),0.28); }
+  html[data-theme="light"] .fab-add{ box-shadow:0 8px 20px rgba(16,24,32,0.16), 0 0 0 1px rgba(var(--chong-rgb),0.12); }
+  /* Hiệu ứng "phát sáng chữ" (text-shadow neon) chỉ đẹp trên nền tối — bản sáng
+     làm dịu hẳn để trông sạch sẽ, chuyên nghiệp thay vì bị mờ/nhoè. */
+  html[data-theme="light"] .hud-clock-time{ text-shadow:none; }
+  html[data-theme="light"] .hud-clock{ box-shadow:none; background:rgba(var(--chong-rgb),0.06); }
+  html[data-theme="light"] .eyebrow{ text-shadow:none; }
+  html[data-theme="light"] .balance-number.to-chong{ text-shadow:none; }
+  html[data-theme="light"] .balance-number.to-vk{ text-shadow:none; }
+  html[data-theme="light"] .fab-mic.listening{ color:#FFFFFF; }
+  html[data-theme="light"] .modal{ box-shadow:0 0 0 1px rgba(16,24,32,0.06), 0 20px 44px -20px rgba(16,24,32,0.25); }
+  html[data-theme="light"] .month-panel,
+  html[data-theme="light"] .ym-panel,
+  html[data-theme="light"] .menu-panel,
+  html[data-theme="light"] .day-panel,
+  html[data-theme="light"] .cat-panel{ box-shadow:0 12px 30px -8px rgba(16,24,32,0.18); }
+
   html, body{ transition:background-color .25s ease, color .25s ease; }
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
@@ -104,6 +172,22 @@
   .auto-pull-toggle.on{ color:var(--chong-soft); border-color:rgba(var(--chong-rgb),0.5); background:rgba(var(--chong-rgb),0.1); }
   .auto-pull-toggle.on svg{ fill:currentColor; }
   .auto-pull-toggle.off{ color:var(--text-faint); opacity:0.7; }
+
+  /* Icon giao diện sáng/tối bên trong menu (⋮) — 2 icon (mặt trời/mặt trăng) chồng
+     lên nhau trong đúng khung 16px của icon menu, lệch xoay + đổi opacity mượt khi
+     bật/tắt thay vì phải render lại SVG bằng JS. */
+  .menu-item-icon-theme{ position:relative; overflow:hidden; }
+  .theme-icon{
+    position:absolute; width:14px; height:14px;
+    transition:opacity .35s ease, transform .45s cubic-bezier(.4,1.4,.4,1);
+  }
+  .theme-icon-sun{ opacity:0; transform:rotate(-90deg) scale(.4); }
+  .theme-icon-moon{ opacity:1; transform:rotate(0deg) scale(1); }
+  /* data-theme="light" -> hiện icon mặt trời (đại diện cho giao diện đang bật) */
+  html[data-theme="light"] #themeToggle .menu-item-icon-theme{ color:var(--gold); }
+  html[data-theme="light"] .theme-icon-sun{ opacity:1; transform:rotate(0deg) scale(1); }
+  html[data-theme="light"] .theme-icon-moon{ opacity:0; transform:rotate(90deg) scale(.4); }
+
   .month-item-row{ display:flex; align-items:stretch; gap:2px; }
   .month-item{
     flex:1; min-width:0; text-align:left; background:transparent; border:none; border-radius:9px; padding:9px 11px;
@@ -715,6 +799,19 @@
             </button>
             <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none" />
             <div class="menu-divider"></div>
+            <button type="button" class="menu-item" id="themeToggle" aria-pressed="false"
+              aria-label="Chuyển đổi giao diện sáng/tối" title="Chuyển đổi giao diện sáng/tối">
+              <span class="menu-item-icon menu-item-icon-theme">
+                <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="4.6"/>
+                  <path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/>
+                </svg>
+                <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20.2 14.6A8.6 8.6 0 1 1 9.4 3.8a7 7 0 0 0 10.8 10.8Z"/>
+                </svg>
+              </span>
+              <span id="themeMenuLabel">Giao diện tối</span>
+            </button>
             <button type="button" class="menu-item" id="syncNowBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
               <span id="syncMenuLabel">Đồng bộ</span>
@@ -1087,7 +1184,38 @@
   const QUEUE_KEY = "so_chi_tieu:queue:v1";
   const LAST_SYNC_KEY = "so_chi_tieu:last_sync_at";
   const AUTO_PULL_KEY = "so_chi_tieu:auto_pull";
+  const THEME_KEY = "so_chi_tieu:theme";
   const STALE_SYNC_MS = 15 * 60 * 1000; // 15 phút — quá thời gian này sẽ cảnh báo nhẹ
+
+  // ---------- Giao diện sáng/tối ----------
+  // Giá trị ban đầu ("dark"/"light") đã được set thẳng lên thẻ <html> bằng script
+  // nhỏ ở <head> (trước khi trang vẽ khung hình đầu, tránh nháy sai màu) — ở đây
+  // chỉ cần đọc lại đúng giá trị đó ra để đồng bộ trạng thái nút bấm + màu meta.
+  function getTheme(){
+    const attr = document.documentElement.getAttribute("data-theme");
+    return attr === "light" ? "light" : "dark";
+  }
+  function setTheme(theme){
+    const next = theme === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try{ localStorage.setItem(THEME_KEY, next); }catch(e){ /* ignore */ }
+    renderThemeToggle(); // cũng tự cập nhật màu thanh trạng thái trên di động (meta theme-color)
+    // Hiệu ứng nền particle đọc màu trực tiếp từ CSS variables -> cần đọc lại +
+    // vẽ lại ngay 1 khung hình để đổi màu đồng bộ tức thì, không phải chờ khung kế tiếp.
+    if(typeof window.__particleRefreshColors === "function") window.__particleRefreshColors();
+  }
+  function renderThemeToggle(){
+    const btn = document.getElementById("themeToggle");
+    const isLight = getTheme() === "light";
+    if(btn){
+      btn.setAttribute("aria-pressed", isLight ? "true" : "false");
+      btn.title = isLight ? "Đang dùng giao diện SÁNG — bấm để chuyển sang tối" : "Đang dùng giao diện TỐI — bấm để chuyển sang sáng";
+    }
+    const label = document.getElementById("themeMenuLabel");
+    if(label) label.textContent = isLight ? "Giao diện sáng" : "Giao diện tối";
+    const metaTheme = document.getElementById("metaThemeColor");
+    if(metaTheme) metaTheme.setAttribute("content", isLight ? "#F2F5F9" : "#080B10");
+  }
 
   // Bật/tắt tự động tải từ Google Sheet khi mở app hoặc chuyển tháng. Mặc định TẮT,
   // người dùng có thể bật bằng icon cạnh icon menu (⋮) — trạng thái được nhớ lại.
@@ -1264,6 +1392,7 @@
     renderMonthUI();
     render();
     renderAutoPullToggle();
+    renderThemeToggle();
     if(!SHEET_SYNC_URL){
       setSyncStatus("Chưa cấu hình đồng bộ Google Sheet", true);
       return;
@@ -2510,6 +2639,25 @@
     );
   });
 
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    setTheme(getTheme() === "light" ? "dark" : "light");
+  });
+  // Nếu người dùng CHƯA từng tự chọn giao diện trên máy này, tự đổi theo khi họ
+  // đổi chế độ sáng/tối của hệ điều hành (ví dụ theo lịch mặt trời của macOS/Windows).
+  if(window.matchMedia){
+    const schemeQuery = window.matchMedia("(prefers-color-scheme: light)");
+    const onSchemeChange = (e) => {
+      let hasSavedChoice = false;
+      try{ hasSavedChoice = localStorage.getItem(THEME_KEY) !== null; }catch(err){ /* ignore */ }
+      if(!hasSavedChoice){
+        document.documentElement.setAttribute("data-theme", e.matches ? "light" : "dark");
+        renderThemeToggle();
+        if(typeof window.__particleRefreshColors === "function") window.__particleRefreshColors();
+      }
+    };
+    if(schemeQuery.addEventListener) schemeQuery.addEventListener("change", onSchemeChange);
+  }
+
   // ---------- Options menu wiring ----------
   const menuToggleBtn = document.getElementById("menuToggle");
   const menuPanel = document.getElementById("menuPanel");
@@ -3230,6 +3378,12 @@ function initParticleNetwork(){
   // nền hạt — xem pauseParticleBg()/resumeParticleBg() ở đầu file.
   window.__particleStart = start;
   window.__particleStop = stop;
+  // Cho nút chuyển giao diện sáng/tối (định nghĩa ở phần app chính) gọi lại khi người
+  // dùng đổi theme, để hạt đổi màu ngay lập tức thay vì đợi lần load trang kế tiếp.
+  window.__particleRefreshColors = function(){
+    refreshColors();
+    if(!running) renderFrame(0); // đang dừng (tab ẩn / giảm chuyển động) -> tự vẽ lại 1 khung với màu mới
+  };
 
   // ---------- Sự kiện ----------
   let resizeTimer = null;
