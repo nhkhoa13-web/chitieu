@@ -499,14 +499,13 @@
   /* ledger table */
   .t-row{
     display:grid;
-    grid-template-columns:56px 1fr auto;
+    grid-template-columns:1fr auto;
     grid-template-areas:
-      "day cat amt"
-      "name name name";
+      "cat amt"
+      "name name";
     align-items:center; column-gap:8px; row-gap:6px;
     padding:12px 2px; border-bottom:1px solid var(--border);
   }
-  .t-day{ grid-area:day; font-family:var(--mono); font-size:12px; color:var(--text-muted); white-space:nowrap; }
   .t-head{ display:none; }
   .t-name{ grid-area:name; font-size:14px; color:var(--text); overflow:visible; text-overflow:clip; white-space:normal; line-height:1.4; }
   .t-note{ color:var(--text-faint); font-style:italic; font-weight:400; }
@@ -517,21 +516,24 @@
   .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; padding:10px 9px; }
   .t-row-wrap .t-row.dragging{ transition:none; }
   .t-row-wrap .t-row.snap{ transition:transform .18s ease; }
-  .t-swipe-actions{ position:absolute; top:0; right:0; bottom:0; display:flex; z-index:0; }
-  .swipe-btn{
-    width:60px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
-    border:none; color:#fff; font-size:10.5px; font-weight:600; cursor:pointer; font-family:inherit;
+  .t-swipe-indicator{
+    position:absolute; top:0; bottom:0; width:96px; z-index:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    color:#fff; font-size:10.5px; font-weight:600; font-family:inherit;
+    opacity:.5; transform:scale(.92); transition:opacity .15s ease, transform .15s ease;
   }
-  .swipe-edit{ background:var(--chong); }
-  .swipe-delete{ background:#e0455a; }
+  .t-swipe-indicator svg{ width:18px; height:18px; }
+  .t-swipe-indicator.armed{ opacity:1; transform:scale(1); }
+  .t-swipe-edit-indicator{ right:0; background:var(--chong); }
+  .t-swipe-delete-indicator{ left:0; background:#e0455a; }
   @media (min-width:700px) and (pointer:fine){
     .t-actions{ display:flex; }
-    .t-swipe-actions{ display:none; }
+    .t-swipe-edit-indicator, .t-swipe-delete-indicator{ display:none; }
   }
   @media (min-width:700px) and (pointer:fine){
     .t-row{
-      grid-template-columns:64px 1fr 150px 100px 64px;
-      grid-template-areas:"day name cat amt actions";
+      grid-template-columns:1fr 150px 100px 64px;
+      grid-template-areas:"name cat amt actions";
       row-gap:0; column-gap:10px;
     }
     .t-head{
@@ -542,13 +544,38 @@
     .t-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .t-row-wrap{ border-radius:0; margin-bottom:0; border:none; border-bottom:1px solid var(--border); box-shadow:none; }
     .t-row-wrap .t-row{ padding:12px 2px; background:transparent; }
-    .t-head .t-day, .t-head .t-name, .t-head .t-cat, .t-head .t-amt{
+    .t-head .t-name, .t-head .t-cat, .t-head .t-amt{
       font-family:var(--sans); font-size:11px; color:var(--text-faint); font-weight:600;
       letter-spacing:.04em; text-transform:uppercase;
     }
   }
   .badge{ font-size:10.5px; padding:3px 8px; border-radius:20px; border:1px solid; font-weight:600; white-space:nowrap; }
   .empty-state{ text-align:center; padding:30px 10px; color:var(--text-faint); }
+
+  /* Gom các khoản chi cùng ngày vào 1 cụm box riêng, dễ phân biệt với ngày khác */
+  .ledger-day-group{ margin-bottom:14px; }
+  .ledger-day-group:last-child{ margin-bottom:0; }
+  .ledger-day-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    padding:7px 12px; margin-bottom:6px; border-radius:9px;
+    background:var(--surface3); border:1px solid var(--border2);
+  }
+  .ledger-day-head-left{ display:flex; align-items:baseline; gap:8px; min-width:0; flex-wrap:wrap; }
+  .ledger-day-num{ font-family:var(--mono); font-weight:700; font-size:13px; color:var(--chong); white-space:nowrap; }
+  .ledger-day-dow{ font-size:11px; color:var(--text-faint); white-space:nowrap; }
+  .ledger-day-today-tag{
+    font-size:9.5px; font-weight:700; color:#fff; background:var(--chong); border-radius:20px;
+    padding:1.5px 7px; letter-spacing:.02em; white-space:nowrap;
+  }
+  .ledger-day-total{ font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--text-muted); white-space:nowrap; }
+  .ledger-day-rows > .t-row-wrap:last-child{ margin-bottom:0; }
+  @media (min-width:700px) and (pointer:fine){
+    .ledger-day-group{ margin-bottom:2px; }
+    .ledger-day-head{
+      background:var(--surface3); border-radius:6px; border:1px solid var(--border2);
+      padding:5px 8px; margin-bottom:0;
+    }
+  }
 
   footer.foot{ text-align:center; font-size:11.5px; color:var(--text-faint); margin-top:8px; }
 
@@ -971,7 +998,7 @@
       </div>
       <div id="tableWrap">
         <div class="t-row t-head">
-          <span class="t-day">Ngày</span><span class="t-name">Khoản chi</span><span class="t-cat">Loại</span><span class="t-amt">Số tiền</span><span class="t-actions"></span>
+          <span class="t-name">Khoản chi</span><span class="t-cat">Loại</span><span class="t-amt">Số tiền</span><span class="t-actions"></span>
         </div>
         <div id="ledgerBody"></div>
       </div>
@@ -1308,6 +1335,16 @@
     const m = parseInt(parts[1], 10);
     if(!y || !m) return 31;
     return new Date(y, m, 0).getDate(); // ngày cuối cùng của tháng m (1-12)
+  }
+  // Trả về nhãn thứ ngắn gọn (T2..T7, CN) cho 1 ngày cụ thể trong tháng — dùng để gắn vào
+  // đầu mỗi cụm box "gom theo ngày" trong Sổ ghi chép.
+  function weekdayShortLabel(monthKey, day){
+    const parts = String(monthKey).split("-");
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if(!y || !m || !day) return "";
+    const dow = new Date(y, m - 1, Number(day)).getDay(); // 0=CN..6=T7
+    return ["CN","T2","T3","T4","T5","T6","T7"][dow];
   }
   function buildDayCalendar(monthKey, selectedDay, gridId, titleId){
     gridId = gridId || "dayGrid";
@@ -1731,17 +1768,10 @@
     buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
   }
 
-  let ledgerOpenSwipeWrap = null;
-  const LEDGER_SWIPE_W = 120;
-  function closeLedgerSwipe(){
-    if(ledgerOpenSwipeWrap){
-      const r = ledgerOpenSwipeWrap.querySelector(".t-row");
-      if(r){ r.classList.add("snap"); r.style.transform = "translateX(0px)"; }
-      ledgerOpenSwipeWrap = null;
-    }
-  }
+  // Vuốt trái = mở form Sửa ngay; vuốt phải = hiện popup xác nhận Xoá ngay (không cần bấm nút riêng).
+  const LEDGER_SWIPE_MAX = 100;     // giới hạn kéo tối đa (px) — chỉ để tạo hiệu ứng, không phải ngưỡng kích hoạt
+  const LEDGER_SWIPE_TRIGGER = 74;  // kéo quá ngưỡng này rồi nhả tay mới kích hoạt Sửa/Xoá
   function renderLedger(){
-    closeLedgerSwipe();
     const body = document.getElementById("ledgerBody");
     const searchWords = stripDiacritics(ledgerFilterText).trim().split(/\s+/).filter(Boolean);
     const filtered = entries.filter(e => {
@@ -1767,34 +1797,68 @@
         : '<div class="empty-state">Không có khoản chi nào khớp với bộ lọc.</div>';
       return;
     }
-    body.innerHTML = sorted.map(e => {
-      const c = catById[e.category] || catById.ca_nhan;
-      return (
-        '<div class="t-row-wrap" data-id="' + e.id + '">' +
-          '<div class="t-swipe-actions">' +
-            '<button type="button" class="swipe-btn swipe-edit" data-action="edit" aria-label="Sửa">' +
-              '<svg width="16" height="16"><use href="#icon-edit-sprite"></use></svg>' +
-              '<span>Sửa</span>' +
-            '</button>' +
-            '<button type="button" class="swipe-btn swipe-delete" data-action="delete" aria-label="Xoá">' +
-              '<svg width="16" height="16"><use href="#icon-trash-sprite"></use></svg>' +
+
+    // Gom các khoản chi liền kề có cùng "day" thành từng cụm — vì `sorted` đã được sắp xếp
+    // theo ngày làm tiêu chí chính nên các khoản cùng ngày luôn nằm cạnh nhau ở đây.
+    const groups = [];
+    let curGroup = null;
+    sorted.forEach(e => {
+      const d = Number(e.day);
+      if(!curGroup || curGroup.day !== d){
+        curGroup = { day: d, items: [] };
+        groups.push(curGroup);
+      }
+      curGroup.items.push(e);
+    });
+
+    const now = new Date();
+    const mkParts = String(currentMonthKey).split("-");
+    const isRealCurrentMonth = now.getFullYear() === parseInt(mkParts[0], 10) && (now.getMonth() + 1) === parseInt(mkParts[1], 10);
+    const todayDay = now.getDate();
+
+    body.innerHTML = groups.map(g => {
+      const dayTotal = g.items.reduce((s, e) => s + Number(e.amount || 0), 0);
+      const dow = weekdayShortLabel(currentMonthKey, g.day);
+      const isToday = isRealCurrentMonth && g.day === todayDay;
+      const rowsHtml = g.items.map(e => {
+        const c = catById[e.category] || catById.ca_nhan;
+        return (
+          '<div class="t-row-wrap" data-id="' + e.id + '">' +
+            '<div class="t-swipe-indicator t-swipe-delete-indicator" aria-hidden="true">' +
+              '<svg width="18" height="18"><use href="#icon-trash-sprite"></use></svg>' +
               '<span>Xoá</span>' +
-            '</button>' +
+            '</div>' +
+            '<div class="t-swipe-indicator t-swipe-edit-indicator" aria-hidden="true">' +
+              '<svg width="18" height="18"><use href="#icon-edit-sprite"></use></svg>' +
+              '<span>Sửa</span>' +
+            '</div>' +
+            '<div class="t-row" data-id="' + e.id + '">' +
+              '<span class="t-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
+              '<span class="t-cat"><span class="badge" style="border-color:' + c.color + ';color:' + c.color + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span></span>' +
+              '<span class="t-amt">' + money(e.amount) + '</span>' +
+              '<span class="t-actions">' +
+                '<button type="button" class="icon-btn" data-action="edit" aria-label="Sửa">' +
+                  '<svg width="14" height="14"><use href="#icon-edit-sprite"></use></svg>' +
+                '</button>' +
+                '<button type="button" class="icon-btn" data-action="delete" aria-label="Xoá">' +
+                  '<svg width="14" height="14"><use href="#icon-trash-sprite"></use></svg>' +
+                '</button>' +
+              '</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join("");
+      return (
+        '<div class="ledger-day-group">' +
+          '<div class="ledger-day-head">' +
+            '<div class="ledger-day-head-left">' +
+              '<span class="ledger-day-num">Ngày ' + g.day + '</span>' +
+              (dow ? '<span class="ledger-day-dow">' + dow + '</span>' : '') +
+              (isToday ? '<span class="ledger-day-today-tag">Hôm nay</span>' : '') +
+            '</div>' +
+            '<span class="ledger-day-total">' + money(dayTotal) + '</span>' +
           '</div>' +
-          '<div class="t-row" data-id="' + e.id + '">' +
-            '<span class="t-day">Ngày ' + e.day + '</span>' +
-            '<span class="t-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
-            '<span class="t-cat"><span class="badge" style="border-color:' + c.color + ';color:' + c.color + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span></span>' +
-            '<span class="t-amt">' + money(e.amount) + '</span>' +
-            '<span class="t-actions">' +
-              '<button type="button" class="icon-btn" data-action="edit" aria-label="Sửa">' +
-                '<svg width="14" height="14"><use href="#icon-edit-sprite"></use></svg>' +
-              '</button>' +
-              '<button type="button" class="icon-btn" data-action="delete" aria-label="Xoá">' +
-                '<svg width="14" height="14"><use href="#icon-trash-sprite"></use></svg>' +
-              '</button>' +
-            '</span>' +
-          '</div>' +
+          '<div class="ledger-day-rows">' + rowsHtml + '</div>' +
         '</div>'
       );
     }).join("");
@@ -1963,9 +2027,10 @@
   const catDetailNextBtn = document.getElementById("catDetailNext");
   let currentDetailDay = null; // null khi đang xem theo danh mục; là số ngày khi đang xem theo ngày
 
-  function openEntryDetail(title, dotColor, rows, calc, showCat){
+  function openEntryDetail(title, dotColor, rows, calc, showCat, showDay){
     const sorted = rows.slice().sort((a,b) => a.day - b.day || String(a.id).localeCompare(String(b.id)));
     const total = sorted.reduce((s,e) => s + Number(e.amount||0), 0);
+    const includeDay = showDay !== false; // mặc định vẫn hiện "Ngày N" mỗi dòng (dùng khi xem theo danh mục, gồm nhiều ngày khác nhau)
 
     const dotEl = document.getElementById("catDetailDot");
     dotEl.style.background = dotColor || "transparent";
@@ -1990,7 +2055,7 @@
           return (
             '<div class="cat-detail-row">' +
               '<div class="cat-detail-row-left">' +
-                '<span class="cat-detail-row-day">Ngày ' + e.day + '</span>' +
+                (includeDay ? '<span class="cat-detail-row-day">Ngày ' + e.day + '</span>' : '') +
                 '<span class="cat-detail-row-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
               '</div>' +
               (showCat ? '<span class="badge" style="border-color:' + c.color + ';color:' + c.color + ';flex-shrink:0;margin:0 8px;">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' : '') +
@@ -2024,7 +2089,7 @@
     catDetailNextBtn.style.display = "";
     catDetailPrevBtn.disabled = currentDetailDay <= 1;
     catDetailNextBtn.disabled = currentDetailDay >= total;
-    openEntryDetail("Ngày " + currentDetailDay, null, entries.filter(e => Number(e.day) === currentDetailDay), null, true);
+    openEntryDetail("Ngày " + currentDetailDay, null, entries.filter(e => Number(e.day) === currentDetailDay), null, true, false);
   }
   catDetailPrevBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay - 1); });
   catDetailNextBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay + 1); });
@@ -2441,13 +2506,9 @@
   document.getElementById("ledgerBody").addEventListener("click", (e) => {
     try{
       const btn = e.target.closest("button[data-action]");
-      if(!btn){
-        if(ledgerOpenSwipeWrap && !e.target.closest(".t-swipe-actions")) closeLedgerSwipe();
-        return;
-      }
+      if(!btn) return;
       const wrap = e.target.closest(".t-row-wrap");
       const id = wrap.getAttribute("data-id");
-      closeLedgerSwipe();
       if(btn.dataset.action === "edit"){
         const entry = entries.find(en => en.id === id);
         if(entry) openModal("edit", entry);
@@ -2472,21 +2533,31 @@
     }catch(err){ showErrorBanner("ledger click: " + err.message); }
   });
 
-  // ---------- Vuốt trái để hiện Sửa/Xoá (mobile) ----------
+  // ---------- Vuốt trái = Sửa ngay, vuốt phải = Xoá ngay (mobile) ----------
   (function(){
     const body = document.getElementById("ledgerBody");
-    let activeRow = null, startX = 0, startY = 0, baseX = 0, axisLocked = null;
+    let activeRow = null, activeWrap = null, startX = 0, startY = 0, axisLocked = null;
+    function setIndicators(wrap, x){
+      const editInd = wrap.querySelector(".t-swipe-edit-indicator");
+      const delInd = wrap.querySelector(".t-swipe-delete-indicator");
+      if(editInd) editInd.classList.toggle("armed", x <= -LEDGER_SWIPE_TRIGGER);
+      if(delInd) delInd.classList.toggle("armed", x >= LEDGER_SWIPE_TRIGGER);
+    }
+    function clearIndicators(wrap){
+      const editInd = wrap.querySelector(".t-swipe-edit-indicator");
+      const delInd = wrap.querySelector(".t-swipe-delete-indicator");
+      if(editInd) editInd.classList.remove("armed");
+      if(delInd) delInd.classList.remove("armed");
+    }
     body.addEventListener("touchstart", (e) => {
       const wrap = e.target.closest(".t-row-wrap");
-      if(!wrap || e.target.closest("button[data-action]")){ activeRow = null; return; }
-      if(ledgerOpenSwipeWrap && ledgerOpenSwipeWrap !== wrap) closeLedgerSwipe();
+      if(!wrap || e.target.closest("button[data-action]")){ activeRow = null; activeWrap = null; return; }
+      activeWrap = wrap;
       activeRow = wrap.querySelector(".t-row");
       activeRow.classList.remove("snap");
       activeRow.classList.add("dragging");
       const t = e.touches[0];
       startX = t.clientX; startY = t.clientY;
-      const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(activeRow.style.transform);
-      baseX = m ? parseFloat(m[1]) : 0;
       axisLocked = null;
     }, { passive: true });
     body.addEventListener("touchmove", (e) => {
@@ -2497,28 +2568,47 @@
       if(axisLocked === null){
         if(Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
         axisLocked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        if(axisLocked === "y"){ activeRow.classList.remove("dragging"); activeRow = null; return; }
+        if(axisLocked === "y"){ activeRow.classList.remove("dragging"); activeRow = null; activeWrap = null; return; }
       }
       if(axisLocked !== "x") return;
       e.preventDefault();
-      const next = Math.max(-LEDGER_SWIPE_W, Math.min(0, baseX + dx));
+      const next = Math.max(-LEDGER_SWIPE_MAX, Math.min(LEDGER_SWIPE_MAX, dx));
       activeRow.style.transform = "translateX(" + next + "px)";
+      setIndicators(activeWrap, next);
     }, { passive: false });
     body.addEventListener("touchend", () => {
       if(!activeRow) return;
       const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(activeRow.style.transform);
       const x = m ? parseFloat(m[1]) : 0;
-      const wrap = activeRow.closest(".t-row-wrap");
+      const wrap = activeWrap;
+      const id = wrap.getAttribute("data-id");
       activeRow.classList.remove("dragging");
       activeRow.classList.add("snap");
-      if(x < -LEDGER_SWIPE_W / 2){
-        activeRow.style.transform = "translateX(-" + LEDGER_SWIPE_W + "px)";
-        ledgerOpenSwipeWrap = wrap;
-      }else{
-        activeRow.style.transform = "translateX(0px)";
-        if(ledgerOpenSwipeWrap === wrap) ledgerOpenSwipeWrap = null;
-      }
+      activeRow.style.transform = "translateX(0px)";
+      clearIndicators(wrap);
       activeRow = null;
+      activeWrap = null;
+      if(x <= -LEDGER_SWIPE_TRIGGER){
+        const entry = entries.find(en => en.id === id);
+        if(entry) openModal("edit", entry);
+      }else if(x >= LEDGER_SWIPE_TRIGGER){
+        const entry = entries.find(en => en.id === id);
+        const label = entry ? (entry.name + " · " + money(entry.amount)) : "khoản chi này";
+        openConfirm(
+          "Xoá khoản chi?",
+          "Xoá \"" + label + "\"? Không thể hoàn tác.",
+          "Xoá",
+          true,
+          () => {
+            try{
+              entries = entries.filter(en => en.id !== id);
+              commit();
+              render();
+              queueSync("deleteEntry", { id });
+            }catch(err){ showErrorBanner("delete: " + err.message); }
+          }
+        );
+      }
     });
   })();
 
