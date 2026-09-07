@@ -1076,7 +1076,7 @@
       <div class="field-row">
         <label class="field">
           <span class="field-label">Tên khoản chi <span class="field-required">*</span></span>
-          <input type="text" id="fName" placeholder="vd. Cơm + nước" required />
+          <input type="text" id="fName" placeholder="vd. Cơm + nước" autocapitalize="sentences" required />
         </label>
         <label class="field field-amount">
           <span class="field-label">Số tiền (nghìn) <span class="field-required">*</span></span>
@@ -1086,7 +1086,7 @@
       </div>
       <label class="field">
         Ghi chú
-        <input type="text" id="fNote" placeholder="vd. mua ở chợ gần nhà" />
+        <input type="text" id="fNote" placeholder="vd. mua ở chợ gần nhà" autocapitalize="sentences" />
       </label>
     </form>
   </div>
@@ -1905,6 +1905,30 @@
   const fCategoryHint = document.getElementById("fCategoryHint");
   const modalTitle = document.getElementById("modalTitle");
   const submitBtn = document.getElementById("submitBtn");
+
+  // Tự động viết hoa chữ cái đầu tiên của "Tên khoản chi" khi gõ (giữ nguyên vị trí con trỏ).
+  fName.addEventListener("input", () => {
+    const v = fName.value;
+    const first = v.charAt(0);
+    const upper = first.toUpperCase();
+    if(first && first !== upper){
+      const pos = fName.selectionStart, endPos = fName.selectionEnd;
+      fName.value = upper + v.slice(1);
+      fName.setSelectionRange(pos, endPos);
+    }
+  });
+
+  // Tự động viết hoa chữ cái đầu tiên của "Ghi chú" khi gõ (giữ nguyên vị trí con trỏ).
+  fNote.addEventListener("input", () => {
+    const v = fNote.value;
+    const first = v.charAt(0);
+    const upper = first.toUpperCase();
+    if(first && first !== upper){
+      const pos = fNote.selectionStart, endPos = fNote.selectionEnd;
+      fNote.value = upper + v.slice(1);
+      fNote.setSelectionRange(pos, endPos);
+    }
+  });
 
   // Có phải đang gõ "công thức" (có phép tính) hay chỉ là 1 số đơn thuần?
   // vd. "15" -> không phải công thức; "10+20", "=15*2", "-5" (số âm) -> "-5" KHÔNG tính là công thức.
