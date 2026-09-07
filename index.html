@@ -362,42 +362,50 @@
   .scale-box svg{ width:100%; max-width:340px; overflow:visible; }
   #beamGroup{ transform-origin:160px 80px; transition:transform .6s cubic-bezier(.34,1.56,.64,1); }
   .hero-right{ flex:1 1 280px; min-width:240px; }
-  .balance-spotlight{
-    display:block; width:100%; text-align:left; cursor:pointer; font:inherit; color:inherit;
-    border-radius:16px; padding:14px 16px 12px; margin-bottom:2px; border:1px solid transparent;
+  .balance-card{
+    border-radius:16px; border:1px solid transparent; overflow:hidden; margin-bottom:2px;
     transition:background .4s ease, border-color .4s ease, filter .15s ease;
   }
-  .balance-spotlight:hover{ filter:brightness(1.06); }
-  .balance-spotlight:active{ filter:brightness(0.97); }
-  .balance-spotlight.to-chong{ background:linear-gradient(135deg, rgba(var(--chong-rgb),0.20), rgba(var(--chong-rgb),0.03)); border-color:rgba(var(--chong-rgb),0.35); }
-  .balance-spotlight.to-vk{ background:linear-gradient(135deg, rgba(var(--vk-rgb),0.20), rgba(var(--vk-rgb),0.03)); border-color:rgba(var(--vk-rgb),0.35); }
-  .balance-spotlight.zero{ background:rgba(var(--zero-rgb),0.12); border-color:rgba(var(--zero-rgb),0.3); }
+  .balance-card:has(.balance-spotlight:hover){ filter:brightness(1.06); }
+  .balance-card:has(.balance-spotlight:active){ filter:brightness(0.97); }
+  .balance-card.to-chong{ background:linear-gradient(160deg, rgba(var(--chong-rgb),0.16), rgba(var(--chong-rgb),0.07)); border-color:rgba(var(--chong-rgb),0.35); }
+  .balance-card.to-vk{ background:linear-gradient(160deg, rgba(var(--vk-rgb),0.16), rgba(var(--vk-rgb),0.07)); border-color:rgba(var(--vk-rgb),0.35); }
+  .balance-card.zero{ background:rgba(var(--zero-rgb),0.12); border-color:rgba(var(--zero-rgb),0.3); }
+  .balance-spotlight{
+    display:block; width:100%; text-align:left; cursor:pointer; font:inherit; color:inherit;
+    background:transparent; border:none; padding:14px 16px 14px;
+  }
   .balance-label-row{ display:flex; align-items:center; gap:7px; margin-bottom:6px; }
   .balance-label-row svg{ width:14px; height:14px; flex-shrink:0; }
   .balance-label{ font-size:13px; color:var(--text-muted); font-weight:600; }
   .balance-chev{ margin-left:auto; color:var(--text-faint); transition:transform .2s; }
   .balance-spotlight.open .balance-chev{ transform:rotate(180deg); }
-  .balance-hint{ font-size:11.5px; color:var(--text-faint); font-weight:600; margin-top:2px; }
+  .balance-hint{
+    display:inline-flex; align-items:center; gap:5px; width:fit-content;
+    font-size:11px; font-weight:700; color:var(--text-faint); letter-spacing:.01em;
+    margin-top:11px; padding:5px 10px 5px 8px; border-radius:20px;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.09);
+  }
+  .balance-hint svg{ flex-shrink:0; opacity:.85; }
   .balance-number{ font-family:var(--mono); font-size:32px; font-weight:700; color:var(--text-hi); margin-bottom:2px; letter-spacing:-0.01em; transition:color .4s ease; }
   .balance-number.to-chong{ color:var(--chong-soft); text-shadow:0 0 22px rgba(var(--chong-rgb),0.35); }
   .balance-number.to-vk{ color:var(--vk-soft); text-shadow:0 0 22px rgba(var(--vk-rgb),0.35); }
   .balance-number.zero{ color:var(--zero); }
-  .info-box{ margin:12px 0; background:var(--surface3); border:1px solid var(--border); border-radius:14px; padding:6px 16px 14px; display:none; }
+  .info-box{ background:transparent; border:none; border-top:1px solid var(--border2); border-radius:0; padding:8px 16px 14px; display:none; }
   .info-box.show{ display:block; }
-  .info-row{ display:flex; justify-content:space-between; align-items:center; padding:11px 0; gap:12px; border-bottom:1px dashed var(--border2); }
+  .info-row{ display:flex; flex-direction:column; gap:2px; padding:11px 0; border-bottom:1px dashed var(--border2); }
   .info-row:last-of-type{ border-bottom:none; }
-  .info-row-main{ display:flex; align-items:flex-start; gap:10px; flex:1; min-width:0; }
-  .info-row-main > div{ flex:1; min-width:0; }
-  .info-icon{ width:26px; height:26px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  .info-row-top{ display:flex; align-items:center; gap:10px; }
+  .info-icon{ width:26px; height:26px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
   .info-icon svg{ width:14px; height:14px; }
   .info-icon.half{ background:linear-gradient(135deg, rgba(var(--chong-rgb),0.22), rgba(var(--vk-rgb),0.22)); }
   .info-icon.debt{ background:rgba(var(--gold-rgb),0.18); }
   .info-icon.third{ background:linear-gradient(135deg, rgba(var(--chong-soft-rgb),0.2), rgba(var(--vk-soft-rgb),0.2)); }
-  .info-row-label{ font-size:12.5px; color:var(--text-mid); font-weight:600; }
+  .info-row-label{ flex:1; min-width:0; font-size:12.5px; color:var(--text-mid); font-weight:600; }
   .info-row-note{ font-size:10.5px; color:var(--text-faint); margin-top:2px; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .info-row-calc{ font-size:11.5px; margin-top:5px; font-family:var(--mono); color:var(--text-faint); }
-  .info-row-calc b.c-ck{ color:var(--chong-soft); font-weight:600; }
-  .info-row-calc b.c-vk{ color:var(--vk-soft); font-weight:600; }
+  .info-row-calc{ font-size:11.5px; margin:5px 0 0 36px; font-family:var(--mono); color:var(--text-faint); line-height:1.5; }
+  .info-row-calc b.c-ck{ color:var(--chong-soft); font-weight:600; white-space:nowrap; }
+  .info-row-calc b.c-vk{ color:var(--vk-soft); font-weight:600; white-space:nowrap; }
   .val-badge{
     font-family:var(--mono); font-size:12.5px; font-weight:700; white-space:nowrap; flex-shrink:0;
     padding:5px 10px; border-radius:20px; display:flex; align-items:center; gap:5px;
@@ -882,50 +890,49 @@
       </div>
 
       <div class="hero-right">
-        <button type="button" class="balance-spotlight" id="balanceSpotlight" aria-expanded="false">
-          <div class="balance-label-row">
-            <svg id="ownerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="color:var(--text-muted)"><path d="M12 2v20M2 12h20"/></svg>
-            <span class="balance-label" id="ownerLabel">Đã cân bằng</span>
-            <svg class="chev balance-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-          </div>
-          <div class="balance-number" id="balanceNumber">0 ₫</div>
-          <div class="balance-hint">Xem chi tiết cách tính</div>
-        </button>
-        <div class="info-box" id="infoBox">
+        <div class="balance-card" id="balanceCard">
+          <button type="button" class="balance-spotlight" id="balanceSpotlight" aria-expanded="false">
+            <div class="balance-label-row">
+              <svg id="ownerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="color:var(--text-muted)"><path d="M12 2v20M2 12h20"/></svg>
+              <span class="balance-label" id="ownerLabel">Đã cân bằng</span>
+              <svg class="chev balance-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <div class="balance-number" id="balanceNumber">0 ₫</div>
+            <div class="balance-hint">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+              <span>Xem chi tiết cách tính</span>
+            </div>
+          </button>
+          <div class="info-box" id="infoBox">
           <div class="info-row">
-            <div class="info-row-main">
+            <div class="info-row-top">
               <span class="info-icon half"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-hi)" stroke-width="2"><path d="M12 3v18M5 7l7-4 7 4M5 7l-2 8a4 4 0 0 0 8 0Z"/></svg></span>
-              <div>
-                <div class="info-row-label">Chênh lệch trả hộ (chia 2)</div>
-                <div class="info-row-calc" id="calcHalf"></div>
-              </div>
+              <div class="info-row-label">Chênh lệch trả hộ (chia 2)</div>
+              <span class="val-badge" id="valHalf"></span>
             </div>
-            <span class="val-badge" id="valHalf"></span>
+            <div class="info-row-calc" id="calcHalf"></div>
           </div>
           <div class="info-row">
-            <div class="info-row-main">
+            <div class="info-row-top">
               <span class="info-icon debt"><svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H7"/></svg></span>
-              <div>
-                <div class="info-row-label">Ghi nợ trực tiếp</div>
-                <div class="info-row-calc" id="calcDebt"></div>
-              </div>
+              <div class="info-row-label">Ghi nợ trực tiếp</div>
+              <span class="val-badge" id="valDebt"></span>
             </div>
-            <span class="val-badge" id="valDebt"></span>
+            <div class="info-row-calc" id="calcDebt"></div>
           </div>
           <div class="info-row">
-            <div class="info-row-main">
+            <div class="info-row-top">
               <span class="info-icon third"><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-hi)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></span>
-              <div>
-                <div class="info-row-label">Chi tiêu chung (chia 3)</div>
-                <div class="info-row-calc" id="calcThird"></div>
-              </div>
+              <div class="info-row-label">Chi tiêu chung (chia 3)</div>
+              <span class="val-badge" id="valThird"></span>
             </div>
-            <span class="val-badge" id="valThird"></span>
+            <div class="info-row-calc" id="calcThird"></div>
           </div>
 
           <div class="info-note">
             <span class="legend-chip"><span class="legend-dot" style="background:var(--chong)"></span>Vợ nợ Chồng</span>
             <span class="legend-chip"><span class="legend-dot" style="background:var(--vk)"></span>Chồng nợ Vợ</span>
+          </div>
           </div>
         </div>
         <div class="hero-stats">
@@ -1630,7 +1637,7 @@
     const ownerLabel = document.getElementById("ownerLabel");
     const balNum = document.getElementById("balanceNumber");
     const beam = document.getElementById("beamGroup");
-    const spotlight = document.getElementById("balanceSpotlight");
+    const balanceCard = document.getElementById("balanceCard");
     const ownerIcon = document.getElementById("ownerIcon");
 
     const isZero = Math.abs(balance.net) < 0.01;
@@ -1638,8 +1645,7 @@
     ownerLabel.textContent = isZero ? "Đã cân bằng" : (balance.net > 0 ? "Vợ đang nợ Chồng" : "Chồng đang nợ Vợ");
     animateValue(balNum, isZero ? 0 : Math.abs(balance.net));
     balNum.className = "balance-number " + dir;
-    const wasOpen = spotlight.classList.contains("open");
-    spotlight.className = "balance-spotlight " + dir + (wasOpen ? " open" : "");
+    balanceCard.className = "balance-card " + dir;
     ownerIcon.style.color = isZero ? "var(--zero)" : (dir === "to-chong" ? "var(--chong-soft)" : "var(--vk-soft)");
     ownerIcon.innerHTML = isZero
       ? '<path d="M20 6 9 17l-5-5"/>'
@@ -1675,7 +1681,7 @@
     valueBadge(balance.half, "valHalf");
 
     document.getElementById("calcDebt").innerHTML =
-      wrapVk(money(totals.vk_thieu)) + " − " + wrapCk(money(totals.ck_thieu));
+      wrapCk(money(totals.ck_thieu)) + " − " + wrapVk(money(totals.vk_thieu));
     valueBadge(balance.debt, "valDebt");
 
     document.getElementById("calcThird").innerHTML =
