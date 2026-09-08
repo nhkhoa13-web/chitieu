@@ -605,10 +605,16 @@
   }
   .modal-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .modal-head-actions{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
-  .btn-primary.modal-head-submit{
-    padding:0 16px; height:34px; font-size:12px; border-radius:9px; box-shadow:none;
+  .modal-head-icon-btn{
+    width:34px; height:34px; border-radius:10px; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center; border:1px solid transparent;
   }
-  .btn-ghost.modal-head-cancel{ padding:0 14px; height:34px; font-size:12px; border-radius:9px; }
+  .modal-head-icon-btn:active{ transform:scale(0.94); }
+  .modal-head-icon-btn.cancel{ background:transparent; border-color:var(--border2); color:var(--chong-soft); }
+  .modal-head-icon-btn.submit{
+    background:linear-gradient(135deg, var(--chong), var(--chong2, #1E9FE8)); color:#031318;
+    box-shadow:0 0 14px rgba(var(--chong-rgb),0.4);
+  }
   .modal-title{ font-family:var(--serif); font-size:18px; font-weight:600; margin:0; color:var(--text-hi); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   label.field{ display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text-muted); font-weight:500; }
   .field-row{ display:flex; gap:10px; }
@@ -1018,7 +1024,7 @@
       </div>
     </section>
 
-    <footer class="foot">Dữ liệu được lưu trên Google Sheet.</footer>
+    <footer class="foot">© 2026 Bản quyền thuộc về Nguyễn Hoàng Khoa.</footer>
   </div>
 
   <button type="button" class="fab-add" id="fabAddBtn" aria-label="Thêm khoản chi" title="Thêm khoản chi">
@@ -1042,8 +1048,12 @@
       <div class="modal-head">
         <h3 class="modal-title" id="modalTitle">Thêm khoản chi</h3>
         <div class="modal-head-actions">
-          <button type="button" class="btn-ghost modal-head-cancel" id="cancelModal">Huỷ</button>
-          <button type="button" class="btn-primary modal-head-submit" id="submitBtn">Thêm</button>
+          <button type="button" class="modal-head-icon-btn cancel" id="cancelModal" aria-label="Huỷ">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          <button type="button" class="modal-head-icon-btn submit" id="submitBtn" aria-label="Thêm">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M5 12.5 10 17.5 20 6.5"/></svg>
+          </button>
         </div>
       </div>
       <div class="field-row">
@@ -1095,6 +1105,10 @@
         Ghi chú
         <input type="text" id="fNote" placeholder="vd. mua ở chợ gần nhà" autocapitalize="sentences" />
       </label>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="cancelModalBottom">Huỷ</button>
+        <button type="button" class="btn-primary" id="submitBtnBottom">Thêm vào sổ</button>
+      </div>
     </form>
   </div>
 
@@ -1911,6 +1925,9 @@
   const fCategoryHint = document.getElementById("fCategoryHint");
   const modalTitle = document.getElementById("modalTitle");
   const submitBtn = document.getElementById("submitBtn");
+  const submitBtnBottom = document.getElementById("submitBtnBottom");
+  const cancelModalBottom = document.getElementById("cancelModalBottom");
+  let formSnapshot = null; // lưu lại trạng thái form lúc vừa mở, để phát hiện có thay đổi chưa lưu hay không
 
   // Tự động viết hoa chữ cái đầu tiên của "Tên khoản chi" khi gõ (giữ nguyên vị trí con trỏ).
   fName.addEventListener("input", () => {
@@ -1997,7 +2014,8 @@
   function openModal(mode, entry){
     editingId = entry ? entry.id : null;
     modalTitle.textContent = mode === "edit" ? "Sửa khoản chi" : "Thêm khoản chi";
-    submitBtn.textContent = mode === "edit" ? "Lưu" : "Thêm";
+    submitBtn.setAttribute("aria-label", mode === "edit" ? "Lưu" : "Thêm");
+    submitBtnBottom.textContent = mode === "edit" ? "Lưu thay đổi" : "Thêm vào sổ";
     populateDayOptions(entry ? entry.day : null);
     fName.value = entry ? entry.name : "";
     fAmount.value = entry ? (entry.amountFormula || entry.amount) : "";
@@ -2009,10 +2027,36 @@
     buildCatList(fCategory.value);
     modalOverlay.classList.add("show");
     pauseParticleBg();
+    // Chụp lại trạng thái form ngay sau khi mở, để biết sau này người dùng có gõ/đổi gì hay chưa.
+    formSnapshot = { day: fDay.value, name: fName.value, amount: fAmount.value, category: fCategory.value, note: fNote.value };
+  }
+  function hasUnsavedFormChanges(){
+    if(!formSnapshot) return false;
+    return fDay.value !== formSnapshot.day ||
+      fName.value !== formSnapshot.name ||
+      fAmount.value !== formSnapshot.amount ||
+      fCategory.value !== formSnapshot.category ||
+      fNote.value !== formSnapshot.note;
+  }
+  // Đóng popup có kiểm tra: nếu đang có nội dung chưa lưu (gõ dở, lỡ tay bấm ra ngoài...),
+  // hỏi lại 1 lần trước khi đóng thật, tránh mất dữ liệu vừa nhập oan uổng.
+  function attemptCloseModal(){
+    if(hasUnsavedFormChanges()){
+      openConfirm(
+        "Huỷ khoản chi đang nhập?",
+        "Thông tin bạn vừa nhập/sửa sẽ bị mất, không thể khôi phục lại. Bạn có chắc muốn huỷ?",
+        "Huỷ bỏ",
+        true,
+        closeModal
+      );
+    } else {
+      closeModal();
+    }
   }
   function closeModal(){
     modalOverlay.classList.remove("show");
     editingId = null;
+    formSnapshot = null;
     entryForm.reset();
     closeDayPanel();
     closeCatPanel();
@@ -2021,8 +2065,9 @@
 
   document.getElementById("addBtn").addEventListener("click", () => openModal("add", null));
   document.getElementById("fabAddBtn").addEventListener("click", () => openModal("add", null));
-  document.getElementById("cancelModal").addEventListener("click", closeModal);
-  modalOverlay.addEventListener("click", (e) => { if(e.target === modalOverlay) closeModal(); });
+  document.getElementById("cancelModal").addEventListener("click", attemptCloseModal);
+  cancelModalBottom.addEventListener("click", attemptCloseModal);
+  modalOverlay.addEventListener("click", (e) => { if(e.target === modalOverlay) attemptCloseModal(); });
 
   // ---------- Confirm dialog helper ----------
   const confirmOverlay = document.getElementById("confirmOverlay");
@@ -2190,6 +2235,10 @@
     saveEntryFromForm();
   });
   submitBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    saveEntryFromForm();
+  });
+  submitBtnBottom.addEventListener("click", (e) => {
     e.preventDefault();
     saveEntryFromForm();
   });
