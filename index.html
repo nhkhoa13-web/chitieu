@@ -537,6 +537,14 @@
   .t-swipe-indicator.armed{ opacity:1; transform:scale(1); }
   .t-swipe-edit-indicator{ right:0; background:var(--chong); border-top-right-radius:11px; border-bottom-right-radius:11px; }
   .t-swipe-delete-indicator{ left:0; background:#e0455a; border-top-left-radius:11px; border-bottom-left-radius:11px; }
+  /* Nhấn giữ 1 khoản chi = hiện popup "Nhân bản khoản chi" — hiệu ứng sáng dần trong
+     lúc giữ tay để người dùng biết đang được ghi nhận, không phải app bị đứng. */
+  .t-row-wrap .t-row{ -webkit-touch-callout:none; }
+  .t-row-wrap .t-row.long-press-armed{ animation:tRowLongPress .55s ease forwards; }
+  @keyframes tRowLongPress{
+    0%{ filter:brightness(1); box-shadow:none; }
+    100%{ filter:brightness(1.16); box-shadow:inset 0 0 0 1.5px rgba(var(--gold-rgb),0.55); }
+  }
   @media (min-width:700px) and (pointer:fine){
     .t-actions{ display:flex; }
     .t-swipe-edit-indicator, .t-swipe-delete-indicator{ display:none; }
@@ -588,7 +596,14 @@
     }
   }
 
-  footer.foot{ text-align:center; font-size:11.5px; color:var(--text-faint); margin-top:8px; }
+  /* 2 nút nổi (Thêm/Mic) vẫn nổi đè lên phía trên các khoản chi/footer như mặc định của
+     giao diện di động — không chừa khoảng trống rỗng phía dưới nữa. Chỉ cần giữ footer
+     luôn hiện trên 1 dòng thẳng, không tự xuống dòng. */
+  footer.foot{
+    text-align:center; font-size:11.5px; color:var(--text-faint);
+    margin-top:14px; white-space:nowrap; overflow-x:auto;
+  }
+  footer.foot .foot-author{ color:var(--gold); font-weight:700; white-space:nowrap; }
 
   /* modal */
   .modal-overlay{
@@ -720,7 +735,7 @@
 
   /* ---- Mobile-first refinements (this app is used mainly on phones) ---- */
   @media (max-width:480px){
-    body{ padding:0 12px 44px; }
+    body{ padding:0 12px calc(64px + env(safe-area-inset-bottom, 0px)); }
     header.top{
       margin:0 -12px 16px; padding:14px 12px 10px;
       /* Tắt backdrop-filter blur trên di động: blur phải tính lại mỗi khung hình khi có
@@ -1024,7 +1039,7 @@
       </div>
     </section>
 
-    <footer class="foot">© 2026 Bản quyền thuộc về Nguyễn Hoàng Khoa.</footer>
+    <footer class="foot">© 2026 Bản quyền thuộc về <span class="foot-author">Nguyễn Hoàng Khoa</span></footer>
   </div>
 
   <button type="button" class="fab-add" id="fabAddBtn" aria-label="Thêm khoản chi" title="Thêm khoản chi">
@@ -2527,6 +2542,43 @@
     });
   }
 
+  // ---------- Nhấn giữ 1 khoản chi = hiện popup "Nhân bản khoản chi" ----------
+  // Tạo thêm 1 khoản chi mới giống hệt khoản đang giữ (cùng ngày/tên/số tiền/danh mục/ghi chú),
+  // chỉ khác ID — tiện khi có nhiều khoản chi giống nhau (vd. mua nước 2 lần trong ngày).
+  function openDuplicateConfirm(id){
+    const entry = entries.find(en => en.id === id);
+    if(!entry) return;
+    const cat = catById[entry.category] || catById.ca_nhan;
+    const catLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
+    const label = entry.name + " · " + money(entry.amount);
+    openConfirm(
+      "Nhân bản khoản chi?",
+      "Tạo thêm 1 khoản chi giống \"" + label + "\" · " + catLabel + " · Ngày " + entry.day + "?",
+      "Nhân bản",
+      false,
+      () => {
+        try{
+          const dup = Object.assign({}, entry, {
+            id: "e_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+            updatedAt: Date.now()
+          });
+          entries.push(dup);
+          commit();
+          render();
+          queueSync("addEntry", dup);
+          const summary = "Đã nhân bản: <b>" + escapeHtml(dup.name) + "</b> · " + money(dup.amount) +
+            " · " + escapeHtml(catLabel) + " · Ngày " + dup.day;
+          showVoiceToast(false, summary, () => {
+            entries = entries.filter(en => en.id !== dup.id);
+            commit();
+            render();
+            queueSync("deleteEntry", { id: dup.id });
+          });
+        }catch(err){ showErrorBanner("duplicate: " + err.message); }
+      }
+    );
+  }
+
   // ---------- Ghi âm giọng nói ----------
   const fabMicBtn = document.getElementById("fabMicBtn");
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2616,9 +2668,36 @@
   });
 
   // ---------- Vuốt trái = Sửa ngay, vuốt phải = Xoá ngay (mobile) ----------
+  // ---------- Nhấn giữ (không kéo) = hiện popup "Nhân bản khoản chi" ----------
   (function(){
     const body = document.getElementById("ledgerBody");
     let activeRow = null, activeWrap = null, startX = 0, startY = 0, axisLocked = null;
+    let lastTouchLongPressAt = 0; // dùng để chặn sự kiện "mouse" giả lập ngay sau cảm ứng trên di động
+
+    // Nhấn giữ ~550ms mà không kéo ngang/dọc quá 6px -> coi là "nhấn giữ" và mở popup
+    // nhân bản. Bất kỳ chuyển động thật nào (kéo vuốt, cuộn trang) đều huỷ ngay, để
+    // không đụng chạm với thao tác vuốt Sửa/Xoá đã có.
+    const LEDGER_LONGPRESS_MS = 550;
+    let longPressTimer = null, longPressRow = null;
+    function armLongPress(wrap, row){
+      disarmLongPress();
+      longPressRow = row;
+      if(row) row.classList.add("long-press-armed");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if(row) row.classList.remove("long-press-armed");
+        if(navigator.vibrate) navigator.vibrate(12);
+        // Đã "chốt" thao tác nhấn giữ -> bỏ theo dõi kéo/vuốt của cử chỉ này luôn,
+        // tránh việc tay còn đang chạm bàn phím cảm ứng làm hàng bị kéo lệch dưới popup.
+        activeRow = null; activeWrap = null; axisLocked = null;
+        openDuplicateConfirm(wrap.getAttribute("data-id"));
+      }, LEDGER_LONGPRESS_MS);
+    }
+    function disarmLongPress(){
+      if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
+      if(longPressRow){ longPressRow.classList.remove("long-press-armed"); longPressRow = null; }
+    }
+
     function setIndicators(wrap, x){
       const editInd = wrap.querySelector(".t-swipe-edit-indicator");
       const delInd = wrap.querySelector(".t-swipe-delete-indicator");
@@ -2633,7 +2712,7 @@
     }
     body.addEventListener("touchstart", (e) => {
       const wrap = e.target.closest(".t-row-wrap");
-      if(!wrap || e.target.closest("button[data-action]")){ activeRow = null; activeWrap = null; return; }
+      if(!wrap || e.target.closest("button[data-action]")){ activeRow = null; activeWrap = null; disarmLongPress(); return; }
       activeWrap = wrap;
       activeRow = wrap.querySelector(".t-row");
       activeRow.classList.remove("snap");
@@ -2641,6 +2720,8 @@
       const t = e.touches[0];
       startX = t.clientX; startY = t.clientY;
       axisLocked = null;
+      armLongPress(wrap, activeRow);
+      lastTouchLongPressAt = Date.now();
     }, { passive: true });
     body.addEventListener("touchmove", (e) => {
       if(!activeRow) return;
@@ -2649,6 +2730,7 @@
       const dy = t.clientY - startY;
       if(axisLocked === null){
         if(Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        disarmLongPress();
         axisLocked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
         if(axisLocked === "y"){ activeRow.classList.remove("dragging"); activeRow = null; activeWrap = null; return; }
       }
@@ -2659,6 +2741,7 @@
       setIndicators(activeWrap, next);
     }, { passive: false });
     body.addEventListener("touchend", () => {
+      disarmLongPress();
       if(!activeRow) return;
       const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(activeRow.style.transform);
       const x = m ? parseFloat(m[1]) : 0;
@@ -2691,6 +2774,35 @@
           }
         );
       }
+    });
+    body.addEventListener("touchcancel", () => {
+      disarmLongPress();
+      if(activeRow){ activeRow.classList.remove("dragging"); activeRow.style.transform = "translateX(0px)"; }
+      if(activeWrap) clearIndicators(activeWrap);
+      activeRow = null; activeWrap = null;
+    });
+
+    // Nhấn giữ bằng chuột (desktop) = cũng mở popup nhân bản, tương tự nhấn giữ trên di động.
+    // Bỏ qua nếu vừa có thao tác cảm ứng (tránh sự kiện "mouse" giả lập trên di động bắn trùng).
+    let mouseDownWrap = null, mouseDownX = 0, mouseDownY = 0;
+    body.addEventListener("mousedown", (e) => {
+      if(e.button !== 0) return;
+      if(Date.now() - lastTouchLongPressAt < 1000) return;
+      const wrap = e.target.closest(".t-row-wrap");
+      if(!wrap || e.target.closest("button[data-action]")) return;
+      mouseDownWrap = wrap;
+      mouseDownX = e.clientX; mouseDownY = e.clientY;
+      armLongPress(wrap, wrap.querySelector(".t-row"));
+    });
+    document.addEventListener("mousemove", (e) => {
+      if(!mouseDownWrap || !longPressTimer) return;
+      if(Math.abs(e.clientX - mouseDownX) > 6 || Math.abs(e.clientY - mouseDownY) > 6){
+        disarmLongPress();
+      }
+    });
+    document.addEventListener("mouseup", () => {
+      mouseDownWrap = null;
+      disarmLongPress();
     });
   })();
 
