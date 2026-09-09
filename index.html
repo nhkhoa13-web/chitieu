@@ -3317,7 +3317,13 @@
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {
     closeMenuPanel();
-    pullMonth(currentMonthKey, { manual: true });
+    openConfirm(
+      "Đồng bộ ngay?",
+      "Tải lại dữ liệu mới nhất từ Google Sheet cho tháng đang xem — nếu có thay đổi chưa lưu xong ở máy này, bản trên Sheet sẽ được ưu tiên hiển thị.",
+      "Đồng bộ",
+      false,
+      () => pullMonth(currentMonthKey, { manual: true })
+    );
   });
 
   document.getElementById("autoPullToggle").addEventListener("click", () => {
@@ -3685,7 +3691,13 @@
   });
   document.getElementById("signOutBtn").addEventListener("click", () => {
     closeMenuPanel();
-    signOut();
+    openConfirm(
+      "Đăng xuất?",
+      "Bạn sẽ cần đăng nhập lại bằng Google để xem/sửa dữ liệu ở lần mở app kế tiếp trên máy này.",
+      "Đăng xuất",
+      true,
+      () => signOut()
+    );
   });
   }catch(err){ showErrorBanner("khởi tạo: " + err.message); }
 
