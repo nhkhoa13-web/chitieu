@@ -524,7 +524,7 @@
   .t-amt{ grid-area:amt; font-family:var(--mono); font-size:13.5px; color:var(--text); text-align:right; font-weight:600; white-space:nowrap; }
   .t-actions{ grid-area:actions; display:none; gap:6px; justify-content:flex-end; }
   .t-row-wrap{ position:relative; overflow:hidden; border-radius:12px; margin-bottom:5px; border:1px solid var(--border2); box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; padding:10px 9px; }
+  .t-row-wrap .t-row{ border-bottom:none; background:var(--surface2); position:relative; z-index:1; touch-action:pan-y; padding:10px 9px; border-radius:inherit; }
   .t-row-wrap .t-row.dragging{ transition:none; }
   .t-row-wrap .t-row.snap{ transition:transform .18s ease; }
   .t-swipe-indicator{
@@ -699,6 +699,51 @@
   }
   .day-panel-clear:hover{ background:var(--surface3); color:var(--text); }
   .field-required{ color:#FF4D6D; font-weight:700; }
+
+  /* ---- Popup bộ lọc khi "Xuất dữ liệu (.xlsx)" ---- */
+  .export-filter-group{ display:flex; flex-direction:column; gap:8px; }
+  .export-filter-label-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .export-filter-label{ font-size:12.5px; color:var(--text-muted); font-weight:600; }
+  .export-filter-toggle-all{
+    background:transparent; border:none; color:var(--chong-soft); font-size:12px; font-weight:600;
+    cursor:pointer; padding:2px 4px; font-family:inherit;
+  }
+  .export-filter-toggle-all:hover{ text-decoration:underline; }
+  .export-chip-list{ display:flex; flex-wrap:wrap; gap:6px; max-height:150px; overflow-y:auto; padding:2px; }
+  .export-chip{
+    display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border-radius:999px;
+    border:1px solid var(--border2); background:var(--bg); color:var(--text-mid); font-size:12.5px;
+    font-family:inherit; cursor:pointer; white-space:nowrap;
+  }
+  .export-chip:hover{ border-color:var(--border2); filter:brightness(1.12); }
+  .export-chip .cat-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; background:var(--text-faint); }
+  .export-chip.active{ background:rgba(var(--chong-rgb),0.16); border-color:rgba(var(--chong-rgb),0.45); color:var(--text-hi); font-weight:600; }
+  .export-filter-empty{ font-size:12.5px; color:var(--text-faint); padding:4px 2px; }
+  .export-note{ font-size:11.5px; color:var(--text-faint); line-height:1.5; }
+
+  /* ---- Popup xem trước khi "Nhập từ Excel" (B) ---- */
+  .import-mode-row{ display:flex; gap:8px; }
+  .import-mode-btn{
+    flex:1; padding:9px 10px; border-radius:11px; border:1px solid var(--border2); background:var(--bg);
+    color:var(--text-mid); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+  }
+  .import-mode-btn:hover{ filter:brightness(1.12); }
+  .import-mode-btn.active{ background:rgba(var(--chong-rgb),0.16); border-color:rgba(var(--chong-rgb),0.45); color:var(--text-hi); }
+  .import-month-list{ display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; padding:2px; }
+  .import-month-row{
+    display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:11px;
+    border:1px solid var(--border2); background:var(--bg); cursor:pointer;
+  }
+  .import-month-row:hover{ border-color:var(--border); }
+  .import-month-row input{ width:16px; height:16px; accent-color:var(--chong); flex-shrink:0; cursor:pointer; }
+  .import-month-name{ font-weight:700; font-size:13px; color:var(--text); white-space:nowrap; }
+  .import-month-stats{ margin-left:auto; font-size:11px; color:var(--text-faint); text-align:right; line-height:1.4; }
+  .import-month-stats .warn{ color:#f0a839; }
+  .import-warning-box{
+    font-size:12px; line-height:1.55; padding:10px 12px; border-radius:11px;
+    background:rgba(224,69,90,0.12); border:1px solid rgba(224,69,90,0.35); color:var(--text-mid);
+  }
+  .import-warning-box.mode-merge{ background:rgba(var(--chong-rgb),0.10); border-color:rgba(var(--chong-rgb),0.3); }
   .field-label{ display:inline-flex; align-items:baseline; gap:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .confirm-message{ font-size:13.5px; color:var(--text-mid); line-height:1.55; margin:0; }
   .cat-detail-modal{ max-width:420px; }
@@ -1136,6 +1181,81 @@
       <div class="modal-actions">
         <button type="button" class="btn-ghost" id="confirmCancelBtn">Huỷ</button>
         <button type="button" class="btn-primary" id="confirmOkBtn">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="exportOverlay">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-head">
+        <h3 class="modal-title">Xuất dữ liệu (.xlsx)</h3>
+        <button type="button" class="icon-btn" id="exportModalClose" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="export-filter-group">
+        <div class="export-filter-label-row">
+          <span class="export-filter-label">Chọn tháng</span>
+          <button type="button" class="export-filter-toggle-all" id="exportMonthToggleAll">Bỏ chọn tất cả</button>
+        </div>
+        <div class="export-chip-list" id="exportMonthList"></div>
+      </div>
+
+      <div class="export-filter-group">
+        <div class="export-filter-label-row">
+          <span class="export-filter-label">Danh mục</span>
+          <button type="button" class="export-filter-toggle-all" id="exportCatToggleAll">Bỏ chọn tất cả</button>
+        </div>
+        <div class="export-chip-list" id="exportCatList"></div>
+      </div>
+
+      <div class="export-filter-group">
+        <span class="export-filter-label">Khoảng ngày trong tháng (bỏ trống = lấy hết)</span>
+        <div class="field-row">
+          <label class="field field-day"><span>Từ ngày</span><input type="number" id="exportDayFrom" min="1" max="31" placeholder="1" /></label>
+          <label class="field field-day"><span>Đến ngày</span><input type="number" id="exportDayTo" min="1" max="31" placeholder="31" /></label>
+        </div>
+      </div>
+
+      <p class="export-note">File xuất ra sẽ có thêm dòng "Tổng theo danh mục" và "Cân bằng Chồng/Vợ" ở cuối mỗi sheet tháng, tính bằng công thức Excel giống hệt cách app đang tính — mở file lên bạn có thể bấm vào từng ô để xem lại công thức.</p>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="exportCancelBtn">Huỷ</button>
+        <button type="button" class="btn-primary" id="exportConfirmBtn">Xuất file</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="importPreviewOverlay">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head">
+        <h3 class="modal-title">Xem trước dữ liệu nhập</h3>
+        <button type="button" class="icon-btn" id="importPreviewClose" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="export-filter-group">
+        <span class="export-filter-label">Chế độ nhập</span>
+        <div class="import-mode-row">
+          <button type="button" class="import-mode-btn active" data-mode="overwrite">Ghi đè hoàn toàn</button>
+          <button type="button" class="import-mode-btn" data-mode="merge">Gộp thêm</button>
+        </div>
+        <div class="import-warning-box" id="importModeWarning"></div>
+      </div>
+
+      <div class="export-filter-group">
+        <div class="export-filter-label-row">
+          <span class="export-filter-label">Tháng sẽ nhập</span>
+          <button type="button" class="export-filter-toggle-all" id="importMonthToggleAll">Bỏ chọn tất cả</button>
+        </div>
+        <div class="import-month-list" id="importMonthList"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="importPreviewCancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="importPreviewConfirm">Xác nhận nhập</button>
       </div>
     </div>
   </div>
@@ -1905,6 +2025,8 @@
 
   // Đẩy toàn bộ dữ liệu 1 hoặc nhiều tháng lên Sheet (ghi đè) — dùng khi khôi phục từ file backup JSON.
   async function pushFullMonths(monthsObj){
+    const succeeded = [];
+    const failed = [];
     for(const monthKey of Object.keys(monthsObj)){
       try{
         const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
@@ -1918,13 +2040,16 @@
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
+        succeeded.push(monthKey);
       }catch(err){
+        failed.push({ monthKey, error: err.message });
         showErrorBanner("Đẩy dữ liệu khôi phục lên Sheet thất bại (tháng " + monthKey + "): " + err.message);
       }
     }
     markSynced();
     const now = new Date();
     setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
+    return { succeeded, failed };
   }
 
   // ---------- Modal / form ----------
@@ -2026,11 +2151,11 @@
     document.getElementById("dayTriggerLabel").textContent = "Ngày " + day;
     buildDayCalendar(currentMonthKey, day);
   }
-  function openModal(mode, entry){
+  function openModal(mode, entry, customTitle, customSubmitLabel){
     editingId = entry ? entry.id : null;
-    modalTitle.textContent = mode === "edit" ? "Sửa khoản chi" : "Thêm khoản chi";
-    submitBtn.setAttribute("aria-label", mode === "edit" ? "Lưu" : "Thêm");
-    submitBtnBottom.textContent = mode === "edit" ? "Lưu thay đổi" : "Thêm vào sổ";
+    modalTitle.textContent = customTitle || (mode === "edit" ? "Sửa khoản chi" : "Thêm khoản chi");
+    submitBtn.setAttribute("aria-label", customSubmitLabel || (mode === "edit" ? "Lưu" : "Thêm"));
+    submitBtnBottom.textContent = customSubmitLabel || (mode === "edit" ? "Lưu thay đổi" : "Thêm vào sổ");
     populateDayOptions(entry ? entry.day : null);
     fName.value = entry ? entry.name : "";
     fAmount.value = entry ? (entry.amountFormula || entry.amount) : "";
@@ -2542,41 +2667,16 @@
     });
   }
 
-  // ---------- Nhấn giữ 1 khoản chi = hiện popup "Nhân bản khoản chi" ----------
-  // Tạo thêm 1 khoản chi mới giống hệt khoản đang giữ (cùng ngày/tên/số tiền/danh mục/ghi chú),
-  // chỉ khác ID — tiện khi có nhiều khoản chi giống nhau (vd. mua nước 2 lần trong ngày).
+  // ---------- Nhấn giữ 1 khoản chi = mở popup "Thêm khoản chi" đã điền sẵn (kiểu giống popup Sửa) ----------
+  // Điền sẵn tên/số tiền/danh mục/ghi chú giống khoản đang giữ, ngày mặc định lấy NGÀY HÔM NAY — người
+  // dùng có thể chỉnh lại trước khi bấm lưu, khác với "Sửa" ở chỗ đây luôn tạo ra 1 khoản chi MỚI
+  // (không đụng tới khoản gốc) vì effectively không set editingId.
   function openDuplicateConfirm(id){
     const entry = entries.find(en => en.id === id);
     if(!entry) return;
-    const cat = catById[entry.category] || catById.ca_nhan;
-    const catLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
-    const label = entry.name + " · " + money(entry.amount);
-    openConfirm(
-      "Nhân bản khoản chi?",
-      "Tạo thêm 1 khoản chi giống \"" + label + "\" · " + catLabel + " · Ngày " + entry.day + "?",
-      "Nhân bản",
-      false,
-      () => {
-        try{
-          const dup = Object.assign({}, entry, {
-            id: "e_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-            updatedAt: Date.now()
-          });
-          entries.push(dup);
-          commit();
-          render();
-          queueSync("addEntry", dup);
-          const summary = "Đã nhân bản: <b>" + escapeHtml(dup.name) + "</b> · " + money(dup.amount) +
-            " · " + escapeHtml(catLabel) + " · Ngày " + dup.day;
-          showVoiceToast(false, summary, () => {
-            entries = entries.filter(en => en.id !== dup.id);
-            commit();
-            render();
-            queueSync("deleteEntry", { id: dup.id });
-          });
-        }catch(err){ showErrorBanner("duplicate: " + err.message); }
-      }
-    );
+    const todayDay = Math.max(1, Math.min(daysInMonthKey(currentMonthKey), new Date().getDate()));
+    const draft = Object.assign({}, entry, { id: null, day: todayDay });
+    openModal("add", draft, "Nhân bản khoản chi", "Nhân bản");
   }
 
   // ---------- Ghi âm giọng nói ----------
@@ -2808,6 +2908,79 @@
 
   // ---------- Backup: export / import ----------
   const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú", "Công thức"];
+  const XLSX_AMOUNT_FMT = '#,##0" đ"';
+  // Biểu tượng màu thay cho tô màu ô: bản xlsx miễn phí đang dùng KHÔNG ghi được màu nền/màu chữ khi
+  // tạo file mới (chỉ giữ lại được style nếu đọc từ file Excel đã có sẵn) — dùng emoji màu để vẫn phân
+  // biệt được Chồng/Vợ bằng mắt khi mở file, mà không cần thêm thư viện ngoài.
+  const CAT_EMOJI = { ca_nhan:"⚪", ck_tinh:"🔵", vk_tinh:"🔴", ck_thieu:"🟡", vk_thieu:"🟡", ck_chung:"🔵", vk_chung:"🔴" };
+
+  // ---------- Popup bộ lọc trước khi xuất (A3) ----------
+  const exportOverlay = document.getElementById("exportOverlay");
+  const exportMonthList = document.getElementById("exportMonthList");
+  const exportCatList = document.getElementById("exportCatList");
+  const exportMonthToggleAll = document.getElementById("exportMonthToggleAll");
+  const exportCatToggleAll = document.getElementById("exportCatToggleAll");
+  const exportDayFrom = document.getElementById("exportDayFrom");
+  const exportDayTo = document.getElementById("exportDayTo");
+
+  function buildExportChip(value, label, dotColor){
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "export-chip active";
+    chip.dataset.value = value;
+    chip.innerHTML = (dotColor ? '<span class="cat-dot" style="background:' + dotColor + '"></span>' : '') + '<span>' + escapeHtml(label) + '</span>';
+    return chip;
+  }
+  function refreshToggleAllLabel(listEl, btnEl){
+    const chips = listEl.querySelectorAll(".export-chip");
+    const allActive = chips.length > 0 && Array.from(chips).every(c => c.classList.contains("active"));
+    btnEl.textContent = allActive ? "Bỏ chọn tất cả" : "Chọn tất cả";
+  }
+  function toggleChipListAll(listEl, btnEl){
+    const chips = Array.from(listEl.querySelectorAll(".export-chip"));
+    if(chips.length === 0) return;
+    const allActive = chips.every(c => c.classList.contains("active"));
+    chips.forEach(c => c.classList.toggle("active", !allActive));
+    refreshToggleAllLabel(listEl, btnEl);
+  }
+  function openExportModal(){
+    const monthKeys = Object.keys(monthsData).sort().reverse();
+    exportMonthList.innerHTML = "";
+    if(monthKeys.length === 0){
+      exportMonthList.innerHTML = '<div class="export-filter-empty">Chưa có tháng nào có dữ liệu.</div>';
+    } else {
+      monthKeys.forEach(k => exportMonthList.appendChild(buildExportChip(k, monthLabel(k))));
+    }
+    exportCatList.innerHTML = "";
+    CATS.forEach(c => exportCatList.appendChild(buildExportChip(c.id, c.label.replace(/\s*·\s*chia\s*\d+/i, ""), c.color)));
+    refreshToggleAllLabel(exportMonthList, exportMonthToggleAll);
+    refreshToggleAllLabel(exportCatList, exportCatToggleAll);
+    exportDayFrom.value = "";
+    exportDayTo.value = "";
+    exportOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeExportModal(){
+    exportOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+  exportMonthList.addEventListener("click", (e) => {
+    const chip = e.target.closest(".export-chip");
+    if(!chip) return;
+    chip.classList.toggle("active");
+    refreshToggleAllLabel(exportMonthList, exportMonthToggleAll);
+  });
+  exportCatList.addEventListener("click", (e) => {
+    const chip = e.target.closest(".export-chip");
+    if(!chip) return;
+    chip.classList.toggle("active");
+    refreshToggleAllLabel(exportCatList, exportCatToggleAll);
+  });
+  exportMonthToggleAll.addEventListener("click", () => toggleChipListAll(exportMonthList, exportMonthToggleAll));
+  exportCatToggleAll.addEventListener("click", () => toggleChipListAll(exportCatList, exportCatToggleAll));
+  document.getElementById("exportModalClose").addEventListener("click", closeExportModal);
+  document.getElementById("exportCancelBtn").addEventListener("click", closeExportModal);
+  exportOverlay.addEventListener("click", (e) => { if(e.target === exportOverlay) closeExportModal(); });
 
   document.getElementById("exportBtn").addEventListener("click", () => {
     closeMenuPanel();
@@ -2817,26 +2990,126 @@
         showErrorBanner("Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi thử lại.");
         return;
       }
-      const wb = XLSX.utils.book_new();
-      const monthKeys = Object.keys(monthsData).sort();
-      monthKeys.forEach(monthKey => {
-        const rows = (monthsData[monthKey] || [])
-          .slice()
-          .sort((a,b) => (Number(a.day)||0) - (Number(b.day)||0))
-          .map(e => [e.day, e.name, e.amount, e.category, e.id, e.updatedAt || 0, e.note || "", e.amountFormula || ""]);
-        const ws = XLSX.utils.aoa_to_sheet([XLSX_HEADER].concat(rows));
-        ws["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:16},{wch:28},{wch:16}];
-        // Tên sheet Excel tối đa 31 ký tự, không chứa : \ / ? * [ ] — mã tháng "2026-07" luôn an toàn.
-        XLSX.utils.book_append_sheet(wb, ws, monthKey.slice(0, 31));
-      });
-      if(monthKeys.length === 0){
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([XLSX_HEADER]), "Trống");
-      }
-      const stamp = new Date().toISOString().slice(0,10);
-      XLSX.writeFile(wb, "so-chi-tieu-" + stamp + ".xlsx");
+      openExportModal();
     }catch(err){ showErrorBanner("export: " + err.message); }
   });
 
+  // Dựng 1 sheet cho 1 tháng: dữ liệu đã lọc + khối "Tổng theo danh mục" (A2) + khối "Cân bằng
+  // Chồng/Vợ" (A5), dùng công thức Excel thật (SUMIF/SUM) tham chiếu đúng vùng dữ liệu — công thức
+  // chia 2 / chia 3 / trừ "thiếu" lấy đúng theo computeBalance() app đang dùng ở màn hình chính, nên
+  // mở file lên số dư luôn khớp với app. (A4: định dạng số tiền, đóng băng dòng đầu, auto-filter.)
+  function buildMonthSheet(monthKey, selectedCatIds, dayFrom, dayTo){
+    const rawEntries = (monthsData[monthKey] || []).filter(e => {
+      if(!selectedCatIds.has(e.category)) return false;
+      const d = Number(e.day);
+      if(dayFrom !== null && d < dayFrom) return false;
+      if(dayTo !== null && d > dayTo) return false;
+      return true;
+    }).slice().sort((a,b) => (Number(a.day)||0) - (Number(b.day)||0));
+
+    const N = rawEntries.length;
+    const dataRows = rawEntries.map(e => [e.day, e.name, e.amount, e.category, e.id, e.updatedAt || 0, e.note || "", e.amountFormula || ""]);
+    const aoa = [XLSX_HEADER].concat(dataRows);
+
+    const dataFirstRow = 2;
+    const dataLastRow = Math.max(dataFirstRow, 1 + N);
+    const dataRangeAmt = "C" + dataFirstRow + ":C" + dataLastRow;
+    const dataRangeCat = "D" + dataFirstRow + ":D" + dataLastRow;
+
+    // ---- A2: khối "Tổng theo danh mục" ----
+    aoa.push([]);
+    aoa.push(["── TỔNG THEO DANH MỤC ──"]);
+    aoa.push(["Danh mục", "", "Tổng tiền", "Mỗi người (nếu có chia)"]);
+    const catTotalRow = {}; // catId -> số dòng chứa tổng của danh mục đó (dùng lại cho khối cân bằng bên dưới)
+    CATS.forEach(c => {
+      if(!selectedCatIds.has(c.id)) return; // danh mục bị lọc bỏ thì không liệt kê
+      catTotalRow[c.id] = aoa.length + 1;
+      const emoji = CAT_EMOJI[c.id] ? CAT_EMOJI[c.id] + " " : "";
+      aoa.push([emoji + c.label.replace(/\s*·\s*chia\s*\d+/i, ""), "", 0, ""]);
+    });
+    const totalRowNum = aoa.length + 1;
+    aoa.push(["TỔNG CỘNG THÁNG", "", 0, ""]);
+
+    // ---- A5: khối "Cân bằng Chồng / Vợ" — đúng công thức computeBalance() của app ----
+    let balanceRows = null;
+    const canHalf = !!(catTotalRow.ck_tinh && catTotalRow.vk_tinh);
+    const canDebt = !!(catTotalRow.ck_thieu && catTotalRow.vk_thieu);
+    const canThird = !!(catTotalRow.ck_chung && catTotalRow.vk_chung);
+    if(canHalf || canDebt || canThird){
+      aoa.push([]);
+      aoa.push(["── CÂN BẰNG CHỒNG / VỢ ──"]);
+      aoa.push(["Hạng mục", "", "Số tiền", ""]);
+      balanceRows = {};
+      if(canHalf){ balanceRows.halfRow = aoa.length + 1; aoa.push(["Chồng tính · chia 2  −  Vợ tính · chia 2  (÷2)", "", 0, ""]); }
+      if(canDebt){ balanceRows.debtRow = aoa.length + 1; aoa.push(["Vợ thiếu  −  Chồng thiếu", "", 0, ""]); }
+      if(canThird){ balanceRows.thirdRow = aoa.length + 1; aoa.push(["Chồng tính chung · chia 3  −  Vợ tính chung · chia 3  (÷3)", "", 0, ""]); }
+      balanceRows.netRow = aoa.length + 1;
+      aoa.push(["=> Số dư (dương = Vợ nợ Chồng · âm = Chồng nợ Vợ)", "", 0, ""]);
+    } else if(Object.keys(catTotalRow).length > 0){
+      aoa.push([]);
+      aoa.push(["(Đã lọc bỏ hết danh mục liên quan nên không tính được Cân bằng Chồng/Vợ.)"]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    function setFormula(row, col, formula){
+      ws[col + row] = { t: "n", f: formula, z: XLSX_AMOUNT_FMT };
+    }
+    if(N > 0){
+      for(let r = dataFirstRow; r <= dataLastRow; r++){
+        const ref = "C" + r;
+        if(ws[ref]) ws[ref].z = XLSX_AMOUNT_FMT;
+      }
+    }
+    CATS.forEach(c => {
+      const rowNum = catTotalRow[c.id];
+      if(!rowNum) return;
+      setFormula(rowNum, "C", N > 0 ? 'SUMIF(' + dataRangeCat + ',"' + c.id + '",' + dataRangeAmt + ')' : "0");
+      const m = c.label.match(/chia\s*(\d+)/i);
+      if(m) setFormula(rowNum, "D", "C" + rowNum + "/" + m[1]);
+    });
+    setFormula(totalRowNum, "C", N > 0 ? "SUM(" + dataRangeAmt + ")" : "0");
+    if(balanceRows){
+      if(balanceRows.halfRow) setFormula(balanceRows.halfRow, "C", "(C" + catTotalRow.ck_tinh + "-C" + catTotalRow.vk_tinh + ")/2");
+      if(balanceRows.debtRow) setFormula(balanceRows.debtRow, "C", "(C" + catTotalRow.vk_thieu + "-C" + catTotalRow.ck_thieu + ")");
+      if(balanceRows.thirdRow) setFormula(balanceRows.thirdRow, "C", "(C" + catTotalRow.ck_chung + "-C" + catTotalRow.vk_chung + ")/3");
+      const parts = [];
+      if(balanceRows.halfRow) parts.push("C" + balanceRows.halfRow);
+      if(balanceRows.debtRow) parts.push("C" + balanceRows.debtRow);
+      if(balanceRows.thirdRow) parts.push("C" + balanceRows.thirdRow);
+      setFormula(balanceRows.netRow, "C", parts.join("+"));
+    }
+
+    // ---- A4: cột rộng vừa nội dung, đóng băng dòng tiêu đề, bật auto-filter cho vùng dữ liệu ----
+    ws["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:16},{wch:34},{wch:16}];
+    ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
+    if(N > 0) ws["!autofilter"] = { ref: "A1:H" + dataLastRow };
+    return ws;
+  }
+
+  document.getElementById("exportConfirmBtn").addEventListener("click", () => {
+    try{
+      const selectedMonths = Array.from(exportMonthList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value);
+      const selectedCats = new Set(Array.from(exportCatList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value));
+      if(selectedMonths.length === 0){ showErrorBanner("Chọn ít nhất 1 tháng để xuất file."); return; }
+      if(selectedCats.size === 0){ showErrorBanner("Chọn ít nhất 1 danh mục để xuất file."); return; }
+      let dayFrom = exportDayFrom.value.trim() === "" ? null : Math.max(1, Math.min(31, Number(exportDayFrom.value)));
+      let dayTo = exportDayTo.value.trim() === "" ? null : Math.max(1, Math.min(31, Number(exportDayTo.value)));
+      if(dayFrom !== null && dayTo !== null && dayFrom > dayTo){ const tmp = dayFrom; dayFrom = dayTo; dayTo = tmp; }
+
+      const wb = XLSX.utils.book_new();
+      selectedMonths.slice().sort().forEach(monthKey => {
+        const ws = buildMonthSheet(monthKey, selectedCats, dayFrom, dayTo);
+        // Tên sheet Excel tối đa 31 ký tự, không chứa : \ / ? * [ ] — mã tháng "2026-07" luôn an toàn.
+        XLSX.utils.book_append_sheet(wb, ws, monthKey.slice(0, 31));
+      });
+      const stamp = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, "so-chi-tieu-" + stamp + ".xlsx");
+      closeExportModal();
+    }catch(err){ showErrorBanner("export: " + err.message); }
+  });
+
+  // ---------- Nhập từ Excel (B) ----------
   const importFileInput = document.getElementById("importFileInput");
   document.getElementById("importBtn").addEventListener("click", () => {
     closeMenuPanel();
@@ -2846,6 +3119,147 @@
     }
     importFileInput.click();
   });
+
+  // Nhận diện các dòng "TỔNG THEO DANH MỤC" / "CÂN BẰNG CHỒNG VỢ" mà chính app tự thêm vào cuối mỗi
+  // sheet khi Xuất dữ liệu (xem buildMonthSheet) — để lỡ người dùng nhập lại đúng file vừa xuất ra thì
+  // các dòng tổng đó không bị tính nhầm thành "dòng lỗi", chỉ đơn giản được bỏ qua trong im lặng.
+  function isSummaryMarkerRow(row){
+    const a = String((row && row[0]) || "").trim();
+    if(a.startsWith("──") || a === "TỔNG CỘNG THÁNG" || a === "Danh mục" || a === "Hạng mục" || /^=>/.test(a)) return true;
+    // Các dòng con trong khối tổng (vd. "🔵 Chồng tính", "Vợ thiếu − Chồng thiếu"...) để nhãn ở cột
+    // Ngày thay vì số, và luôn bỏ trống cột Tên khoản chi — dùng đặc điểm này để nhận diện chung,
+    // không cần liệt kê hết từng nhãn danh mục có thể xuất hiện.
+    const dayNum = Number(row && row[0]);
+    const hasName = String((row && row[1]) || "").trim() !== "";
+    if(!hasName && a !== "" && !(Number.isFinite(dayNum) && dayNum >= 1 && dayNum <= 31)) return true;
+    return false;
+  }
+
+  const importPreviewOverlay = document.getElementById("importPreviewOverlay");
+  const importMonthList = document.getElementById("importMonthList");
+  const importMonthToggleAll = document.getElementById("importMonthToggleAll");
+  const importModeWarning = document.getElementById("importModeWarning");
+  const importModeBtns = Array.from(document.querySelectorAll(".import-mode-btn"));
+  let importPreviewMode = "overwrite"; // "overwrite" | "merge"
+  let importPreviewData = null; // { parsedMonths, stats } — chờ người dùng xác nhận ở popup xem trước
+
+  function importModeWarningText(mode){
+    return mode === "merge"
+      ? "Gộp thêm: giữ nguyên các khoản chi hiện có, chỉ THÊM khoản mới hoặc CẬP NHẬT khoản trùng ID lấy từ file — không xoá khoản chi nào đang có sẵn."
+      : "Ghi đè hoàn toàn: THAY THẾ toàn bộ dữ liệu hiện có (cả trên Google Sheet) của các tháng được chọn bằng đúng nội dung trong file. Không thể hoàn tác.";
+  }
+  function setImportMode(mode){
+    importPreviewMode = mode;
+    importModeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+    importModeWarning.textContent = importModeWarningText(mode);
+    importModeWarning.classList.toggle("mode-merge", mode === "merge");
+  }
+  importModeBtns.forEach(b => b.addEventListener("click", () => setImportMode(b.dataset.mode)));
+
+  function buildImportMonthRow(monthKey, stat){
+    const row = document.createElement("label");
+    row.className = "import-month-row";
+    const existingCount = (monthsData[monthKey] || []).length;
+    const bits = [stat.valid + " khoản chi"];
+    if(stat.skipped > 0) bits.push('<span class="warn">bỏ qua ' + stat.skipped + ' dòng thiếu tên</span>');
+    if(existingCount > 0) bits.push("app đang có sẵn " + existingCount + " khoản");
+    row.innerHTML =
+      '<input type="checkbox" checked data-month="' + monthKey + '" />' +
+      '<span class="import-month-name">' + escapeHtml(monthKey) + '</span>' +
+      '<span class="import-month-stats">' + bits.join(" · ") + '</span>';
+    return row;
+  }
+  function refreshImportToggleAllLabel(){
+    const boxes = importMonthList.querySelectorAll("input[type=checkbox]");
+    const allChecked = boxes.length > 0 && Array.from(boxes).every(b => b.checked);
+    importMonthToggleAll.textContent = allChecked ? "Bỏ chọn tất cả" : "Chọn tất cả";
+  }
+  importMonthList.addEventListener("change", (e) => {
+    if(e.target && e.target.matches("input[type=checkbox]")) refreshImportToggleAllLabel();
+  });
+  importMonthToggleAll.addEventListener("click", () => {
+    const boxes = Array.from(importMonthList.querySelectorAll("input[type=checkbox]"));
+    if(boxes.length === 0) return;
+    const allChecked = boxes.every(b => b.checked);
+    boxes.forEach(b => { b.checked = !allChecked; });
+    refreshImportToggleAllLabel();
+  });
+
+  function openImportPreview(parsedMonths, stats){
+    importPreviewData = { parsedMonths, stats };
+    setImportMode("overwrite");
+    importMonthList.innerHTML = "";
+    Object.keys(parsedMonths).sort().reverse().forEach(monthKey => {
+      importMonthList.appendChild(buildImportMonthRow(monthKey, stats[monthKey]));
+    });
+    refreshImportToggleAllLabel();
+    importPreviewOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeImportPreview(){
+    importPreviewOverlay.classList.remove("show");
+    importPreviewData = null;
+    resumeParticleBg();
+  }
+  document.getElementById("importPreviewClose").addEventListener("click", closeImportPreview);
+  document.getElementById("importPreviewCancel").addEventListener("click", closeImportPreview);
+  importPreviewOverlay.addEventListener("click", (e) => { if(e.target === importPreviewOverlay) closeImportPreview(); });
+
+  // Gộp dữ liệu cũ + dữ liệu nhập theo ID: ID trùng -> lấy bản trong file; ID mới -> thêm vào;
+  // khoản chi cũ không có trong file (ID không trùng) -> giữ nguyên, không bị xoá.
+  function mergeMonthEntries(existing, imported){
+    const byId = new Map((existing || []).map(e => [e.id, e]));
+    (imported || []).forEach(imp => byId.set(imp.id, imp));
+    return Array.from(byId.values());
+  }
+
+  document.getElementById("importPreviewConfirm").addEventListener("click", () => {
+    if(!importPreviewData) return;
+    const checkedBoxes = Array.from(importMonthList.querySelectorAll("input[type=checkbox]:checked"));
+    if(checkedBoxes.length === 0){ showErrorBanner("Chọn ít nhất 1 tháng để nhập."); return; }
+    const selectedMonths = checkedBoxes.map(b => b.dataset.month);
+    const mode = importPreviewMode;
+    const { parsedMonths, stats } = importPreviewData;
+
+    const monthsToApply = {};
+    selectedMonths.forEach(monthKey => {
+      monthsToApply[monthKey] = mode === "merge"
+        ? mergeMonthEntries(monthsData[monthKey], parsedMonths[monthKey])
+        : parsedMonths[monthKey].slice();
+    });
+
+    monthsData = Object.assign({}, monthsData, monthsToApply);
+    currentMonthKey = selectedMonths.slice().sort().reverse()[0];
+    entries = monthsData[currentMonthKey] || [];
+    saveCache();
+    renderMonthUI();
+    render();
+
+    const totalEntries = selectedMonths.reduce((sum, k) => sum + (parsedMonths[k] ? parsedMonths[k].length : 0), 0);
+    const totalSkipped = selectedMonths.reduce((sum, k) => sum + ((stats[k] && stats[k].skipped) || 0), 0);
+    const modeLabel = mode === "merge" ? "gộp thêm" : "ghi đè";
+    closeImportPreview();
+
+    if(SHEET_SYNC_URL){
+      setSyncStatus("Đang đẩy dữ liệu nhập lên Google Sheet…", false);
+      pushFullMonths(monthsToApply).then(result => {
+        const summary =
+          "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng" +
+          (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "") +
+          (result.failed.length > 0
+            ? ' · <span style="color:#e0455a">lỗi đẩy Sheet cho ' + result.failed.length + ' tháng</span>'
+            : " · đã đồng bộ Sheet xong");
+        showVoiceToast(result.failed.length > 0, summary);
+      });
+    } else {
+      showErrorBanner("Chưa cấu hình Google Sheet — dữ liệu nhập chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
+      showVoiceToast(false,
+        "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng (chỉ lưu tạm ở máy này)" +
+        (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "")
+      );
+    }
+  });
+
   importFileInput.addEventListener("change", () => {
     const file = importFileInput.files && importFileInput.files[0];
     importFileInput.value = "";
@@ -2859,13 +3273,16 @@
       try{
         const wb = XLSX.read(new Uint8Array(reader.result), { type: "array" });
         const parsedMonths = {};
+        const stats = {};
         wb.SheetNames.forEach(sheetName => {
           const monthKey = sheetName.trim();
           if(!/^\d{4}-\d{2}$/.test(monthKey)) return; // bỏ qua sheet không đúng dạng "YYYY-MM"
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: "" });
-          const dataRows = rows.slice(1); // bỏ dòng tiêu đề
+          const dataRows = rows.slice(1) // bỏ dòng tiêu đề
+            .filter(row => row && row.length && row.some(v => String(v).trim() !== "")) // bỏ dòng trống hoàn toàn
+            .filter(row => !isSummaryMarkerRow(row)); // bỏ khối "Tổng theo danh mục"/"Cân bằng" tự thêm khi Xuất
           const entriesForMonth = dataRows
-            .filter(row => row && row.length && String(row[1] || "").trim() !== "")
+            .filter(row => String(row[1] || "").trim() !== "") // phải có "Tên khoản chi"
             .map((row, i) => ({
               day: Number(row[0]) || 1,
               name: String(row[1] || "").trim(),
@@ -2877,6 +3294,7 @@
               amountFormula: String(row[7] || "").trim()
             }));
           parsedMonths[monthKey] = entriesForMonth;
+          stats[monthKey] = { valid: entriesForMonth.length, skipped: dataRows.length - entriesForMonth.length };
         });
 
         const monthCount = Object.keys(parsedMonths).length;
@@ -2884,26 +3302,7 @@
           openConfirm("File không hợp lệ", "Không tìm thấy sheet nào đúng định dạng tên tháng \"YYYY-MM\" (ví dụ \"2026-07\") trong file này.", "Đã hiểu", true, () => {});
           return;
         }
-        openConfirm(
-          "Khôi phục dữ liệu?",
-          "File này có " + monthCount + " tháng dữ liệu. Khôi phục sẽ THAY THẾ toàn bộ dữ liệu hiện có của các tháng đó (cả trên Google Sheet). Không thể hoàn tác.",
-          "Khôi phục",
-          true,
-          () => {
-            monthsData = Object.assign({}, monthsData, parsedMonths);
-            currentMonthKey = Object.keys(parsedMonths).sort().reverse()[0];
-            entries = monthsData[currentMonthKey] || [];
-            saveCache();
-            renderMonthUI();
-            render();
-            if(SHEET_SYNC_URL){
-              setSyncStatus("Đang đẩy dữ liệu khôi phục lên Google Sheet…", false);
-              pushFullMonths(parsedMonths);
-            }else{
-              showErrorBanner("Chưa cấu hình Google Sheet — dữ liệu khôi phục chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
-            }
-          }
-        );
+        openImportPreview(parsedMonths, stats);
       }catch(err){ showErrorBanner("import: " + err.message); }
     };
     reader.readAsArrayBuffer(file);
