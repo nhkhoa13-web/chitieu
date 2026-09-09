@@ -69,9 +69,11 @@
   /* Chữ trên nút/nền gradient cyan→xanh dương giờ đậm hơn (dùng làm chữ được) nên
      đổi chữ trong nút từ đen sang trắng để vẫn đủ tương phản ở giao diện sáng. */
   html[data-theme="light"] .btn-primary,
-  html[data-theme="light"] .fab-add{ color:#FFFFFF; }
+  html[data-theme="light"] .fab-add,
+  html[data-theme="light"] .modal-head-icon-btn.submit{ color:#FFFFFF; }
   html[data-theme="light"] .btn-primary{ box-shadow:0 4px 14px rgba(var(--chong-rgb),0.28); }
   html[data-theme="light"] .fab-add{ box-shadow:0 8px 20px rgba(16,24,32,0.16), 0 0 0 1px rgba(var(--chong-rgb),0.12); }
+  html[data-theme="light"] .modal-head-icon-btn.submit{ box-shadow:0 4px 14px rgba(var(--chong-rgb),0.3); }
   /* Hiệu ứng "phát sáng chữ" (text-shadow neon) chỉ đẹp trên nền tối — bản sáng
      làm dịu hẳn để trông sạch sẽ, chuyên nghiệp thay vì bị mờ/nhoè. */
   html[data-theme="light"] .hud-clock-time{ text-shadow:none; }
@@ -391,10 +393,15 @@
   .balance-number.to-chong{ color:var(--chong-soft); text-shadow:0 0 22px rgba(var(--chong-rgb),0.35); }
   .balance-number.to-vk{ color:var(--vk-soft); text-shadow:0 0 22px rgba(var(--vk-rgb),0.35); }
   .balance-number.zero{ color:var(--zero); }
-  .info-box{ background:transparent; border:none; border-top:1px solid var(--border2); border-radius:0; padding:8px 16px 14px; display:none; }
-  .info-box.show{ display:block; }
-  .info-row{ display:flex; flex-direction:column; gap:2px; padding:11px 0; border-bottom:1px dashed var(--border2); }
-  .info-row:last-of-type{ border-bottom:none; }
+  .info-box{
+    background:transparent; border:none; border-radius:0; padding:10px 16px 14px;
+    display:none; flex-direction:column; gap:8px;
+  }
+  .info-box.show{ display:flex; }
+  .info-row{
+    display:flex; flex-direction:column; gap:2px; padding:11px 12px; border-radius:13px;
+    background:var(--surface2); border:1px solid var(--border2);
+  }
   .info-row-top{ display:flex; align-items:center; gap:10px; }
   .info-icon{ width:26px; height:26px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
   .info-icon svg{ width:14px; height:14px; }
@@ -806,8 +813,8 @@
     .modal{ padding:18px; gap:12px; }
     .modal-actions{ flex-direction:column-reverse; bottom:-18px; }
     .modal-actions button{ width:100%; justify-content:center; }
-    .info-box{ padding:4px 12px 12px; }
-    .info-row{ padding:10px 0; }
+    .info-box{ padding:6px 12px 12px; gap:7px; }
+    .info-row{ padding:10px 11px; }
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
