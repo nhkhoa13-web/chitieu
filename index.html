@@ -463,6 +463,10 @@
   .card-title{ font-family:var(--serif); font-size:18px; font-weight:600; margin:0; color:var(--text-hi); }
   .stats-body{ display:none; }
   .stats-body.show{ display:block; }
+  /* Khi thu gọn "Chi tiêu theo ngày" -> vẫn hiện dòng "Ngày chi nhiều nhất" ngay dưới tiêu đề */
+  .peak-caption-collapsed{ display:none; }
+  .card-head-toggle:not(.open) + .peak-caption-collapsed{ display:block; }
+  .peak-caption-collapsed .peak-caption{ margin-top:0; }
   .card-subtitle{ font-family:var(--serif); font-size:14.5px; font-weight:600; margin:18px 0 12px; color:var(--text-hi); }
 
   /* category breakdown */
@@ -1086,6 +1090,7 @@
         <h2 class="card-title">Chi tiêu theo ngày</h2>
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
+      <div id="peakCaptionCollapsed" class="peak-caption-collapsed"></div>
       <div class="stats-body show" id="statsBody">
         <div class="day-chart" id="dayChart"></div>
         <div id="peakCaption"></div>
@@ -1995,14 +2000,18 @@
     }
 
     const caption = document.getElementById("peakCaption");
+    const captionCollapsed = document.getElementById("peakCaptionCollapsed");
     if(peakDay){
-      caption.innerHTML =
+      const captionHtml =
         '<div class="peak-caption">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 11-13h-8z"/></svg>' +
           'Ngày chi nhiều nhất: <b>Ngày ' + peakDay + '</b> · ' + money(max) +
         '</div>';
+      caption.innerHTML = captionHtml;
+      captionCollapsed.innerHTML = captionHtml;
     }else{
       caption.innerHTML = "";
+      captionCollapsed.innerHTML = "";
     }
   }
 
