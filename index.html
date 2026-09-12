@@ -361,9 +361,36 @@
     content:""; position:absolute; top:0; left:0; right:0; height:2px;
     background:linear-gradient(90deg, var(--chong), var(--gold), var(--vk));
   }
-  .scale-box{ flex:0 0 240px; display:flex; justify-content:center; }
-  .scale-box svg{ width:100%; max-width:340px; overflow:visible; }
-  #beamGroup{ transform-origin:160px 80px; transition:transform .6s cubic-bezier(.34,1.56,.64,1); }
+  :root{ --scale-violet:#8b7bff; --scale-violet-rgb:139,123,255; --scale-beam:#9fb3d9; --scale-beam-rgb:159,179,217; }
+  html[data-theme="light"]{ --scale-violet:#6a4fd6; --scale-violet-rgb:106,79,214; --scale-beam:#5c6b85; --scale-beam-rgb:92,107,133; }
+  .scale-box{ flex:1 1 100%; width:100%; display:flex; justify-content:center; }
+  .scale-box svg{ width:100%; max-width:760px; overflow:visible; }
+  #beamGroup{ transform-origin:400px 189px; transition:transform .85s cubic-bezier(.33,1.15,.35,1); }
+  #hangerLeft,#hangerRight{ transition:transform .85s cubic-bezier(.33,1.15,.35,1); }
+  .scale-stand-tri{ fill:none; stroke:var(--scale-violet); stroke-width:1.4; opacity:.55; }
+  .scale-stand-base{ fill:none; stroke:var(--scale-beam); stroke-width:1.6; filter:drop-shadow(0 0 4px rgba(var(--scale-beam-rgb),0.4)); }
+  .scale-beam-fill{ fill:rgba(var(--scale-beam-rgb),0.05); }
+  .scale-beam-bar{ fill:none; stroke:var(--scale-beam); stroke-width:1.6; filter:drop-shadow(0 0 4px rgba(var(--scale-beam-rgb),0.4)); }
+  .scale-tick{ stroke:var(--scale-beam); stroke-width:1; opacity:.4; }
+  .scale-cord{ stroke:var(--text-faint); stroke-width:1.4; opacity:.75; stroke-dasharray:3 3; }
+  .scale-pan-chong{ stroke:var(--chong); fill:rgba(var(--chong-rgb),0.08); filter:drop-shadow(0 0 8px rgba(var(--chong-rgb),0.85)); stroke-width:1.6; }
+  .scale-pan-vk{ stroke:var(--vk); fill:rgba(var(--vk-rgb),0.08); filter:drop-shadow(0 0 8px rgba(var(--vk-rgb),0.85)); stroke-width:1.6; }
+  .scale-pan-text{ font-family:var(--serif); font-size:20px; font-weight:700; letter-spacing:.03em; text-anchor:middle; }
+  .scale-pan-text-chong{ fill:var(--chong); filter:drop-shadow(0 0 6px rgba(var(--chong-rgb),0.9)); }
+  .scale-pan-text-vk{ fill:var(--vk); filter:drop-shadow(0 0 6px rgba(var(--vk-rgb),0.9)); }
+  .scale-pivot-cap{ fill:var(--gold); filter:drop-shadow(0 0 12px rgba(var(--gold-rgb),0.9)); animation:scalePulse 3s ease-in-out infinite; }
+  @keyframes scalePulse{ 0%,100%{ opacity:1; } 50%{ opacity:.55; } }
+  .scale-orbit{ transform-origin:400px 158px; animation:scaleSpin 9s linear infinite; }
+  .scale-orbit2{ transform-origin:400px 158px; animation:scaleSpin 14s linear infinite reverse; }
+  @keyframes scaleSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+  .scale-ring{ fill:none; stroke:var(--scale-violet); opacity:.35; }
+  .scale-spark{ fill:var(--gold); }
+  html[data-theme="light"] .scale-pan-chong,
+  html[data-theme="light"] .scale-pan-vk{ filter:drop-shadow(0 0 4px rgba(0,0,0,0.1)); }
+  html[data-theme="light"] .scale-pan-text-chong,
+  html[data-theme="light"] .scale-pan-text-vk{ filter:none; }
+  html[data-theme="light"] .scale-pivot-cap{ filter:drop-shadow(0 0 6px rgba(var(--gold-rgb),0.55)); }
+  html[data-theme="light"] .scale-ring{ opacity:.5; }
   .hero-right{ flex:1 1 280px; min-width:240px; }
   .balance-card{
     border-radius:16px; border:1px solid transparent; overflow:hidden; margin-bottom:2px;
@@ -838,6 +865,8 @@
 
   @media (prefers-reduced-motion: reduce){
     #beamGroup{ transition:none; }
+    #hangerLeft,#hangerRight{ transition:none; }
+    .scale-pivot-cap,.scale-orbit,.scale-orbit2{ animation:none !important; }
     .cat-bar-fill{ transition:none; }
     .day-bar{ transition:filter .12s ease; }
     .hud-clock-dot{ animation:none; }
@@ -859,8 +888,7 @@
     .title{ font-size:19px; }
     .eyebrow{ font-size:21px; margin-bottom:5px; }
     .hero{ padding:18px 16px; gap:16px; border-radius:16px; }
-    .scale-box{ flex-basis:100%; width:100%; }
-    .scale-box svg{ max-width:300px; width:82%; }
+    .scale-box svg{ max-width:none; width:100%; }
     .balance-number{ font-size:25px; }
     .card{ padding:16px 14px; border-radius:14px; }
     .card-title{ font-size:16.5px; }
@@ -1003,20 +1031,43 @@
 
     <section class="hero">
       <div class="scale-box">
-        <svg viewBox="0 0 320 196">
-          <rect x="156" y="90" width="8" height="72" rx="2" fill="#3A4454"/>
-          <polygon points="160,80 178,166 142,166" fill="#2A3140" stroke="#3A4454" stroke-width="1"/>
-          <ellipse cx="160" cy="166" rx="46" ry="7" fill="#242C39"/>
-          <circle cx="160" cy="80" r="6" fill="var(--gold)"/>
+        <svg viewBox="0 0 800 340">
+          <!-- stand -->
+          <polygon class="scale-stand-tri" points="400,158 340,330 460,330"/>
+          <line x1="330" y1="330" x2="470" y2="330" class="scale-stand-base"/>
+
+          <!-- orbit rings + sparks around pivot -->
+          <g class="scale-orbit"><circle class="scale-ring" cx="400" cy="158" r="34" stroke-dasharray="2 6"/></g>
+          <g class="scale-orbit2"><circle class="scale-ring" cx="400" cy="158" r="46" stroke-dasharray="1 5"/></g>
           <g id="beamGroup">
-            <rect x="45" y="76" width="230" height="6" rx="3" fill="#4B5566"/>
-            <line x1="60" y1="80" x2="60" y2="126" stroke="var(--chong)" stroke-width="2"/>
-            <ellipse cx="60" cy="126" rx="28" ry="6" fill="var(--chong)"/>
-            <line x1="260" y1="80" x2="260" y2="126" stroke="var(--vk)" stroke-width="2"/>
-            <ellipse cx="260" cy="126" rx="28" ry="6" fill="var(--vk)"/>
+            <rect x="190" y="181" width="420" height="16" rx="3" class="scale-beam-fill" stroke="none"/>
+            <rect x="190" y="181" width="420" height="16" rx="3" class="scale-beam-bar"/>
+            <line x1="240" y1="189" x2="560" y2="189" class="scale-tick" stroke-dasharray="4 6"/>
           </g>
-          <text x="60" y="184" text-anchor="middle" fill="var(--chong)" font-size="17" font-weight="700" font-family="Inter, sans-serif">Chồng</text>
-          <text x="260" y="184" text-anchor="middle" fill="var(--vk)" font-size="17" font-weight="700" font-family="Inter, sans-serif">Vợ</text>
+
+          <g class="scale-orbit">
+            <circle class="scale-spark" cx="400" cy="124" r="4"/>
+            <circle class="scale-spark" cx="434" cy="158" r="4" opacity="0.7"/>
+            <circle class="scale-spark" cx="366" cy="158" r="4" opacity="0.7"/>
+            <circle class="scale-spark" cx="400" cy="192" r="4" opacity="0.7"/>
+          </g>
+
+          <!-- left cord + hex pan: translated independently so it always hangs level -->
+          <g id="hangerLeft">
+            <line x1="210" y1="189" x2="210" y2="248" class="scale-cord"/>
+            <path class="scale-pan-chong" d="M 206.19,253.22 L 206.19,253.22 Q 210.00,252.00 213.81,253.22 L 262.19,268.78 Q 266.00,270.00 266.00,274.00 L 266.00,286.00 Q 266.00,290.00 262.19,291.22 L 213.81,306.78 Q 210.00,308.00 206.19,306.78 L 157.81,291.22 Q 154.00,290.00 154.00,286.00 L 154.00,274.00 Q 154.00,270.00 157.81,268.78 Z"/>
+            <text x="210" y="286" class="scale-pan-text scale-pan-text-chong">CHỒNG</text>
+          </g>
+
+          <!-- right cord + hex pan -->
+          <g id="hangerRight">
+            <line x1="590" y1="189" x2="590" y2="248" class="scale-cord"/>
+            <path class="scale-pan-vk" d="M 586.19,253.22 L 586.19,253.22 Q 590.00,252.00 593.81,253.22 L 642.19,268.78 Q 646.00,270.00 646.00,274.00 L 646.00,286.00 Q 646.00,290.00 642.19,291.22 L 593.81,306.78 Q 590.00,308.00 586.19,306.78 L 537.81,291.22 Q 534.00,290.00 534.00,286.00 L 534.00,274.00 Q 534.00,270.00 537.81,268.78 Z"/>
+            <text x="590" y="286" class="scale-pan-text scale-pan-text-vk">VỢ</text>
+          </g>
+
+          <!-- pivot -->
+          <polygon class="scale-pivot-cap" points="400,178 412,189 400,200 388,189"/>
         </svg>
       </div>
 
@@ -1086,12 +1137,12 @@
     </section>
 
     <section class="card">
-      <button type="button" class="card-head card-head-toggle open" id="statsToggle">
+      <button type="button" class="card-head card-head-toggle" id="statsToggle">
         <h2 class="card-title">Chi tiêu theo ngày</h2>
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="peakCaptionCollapsed" class="peak-caption-collapsed"></div>
-      <div class="stats-body show" id="statsBody">
+      <div class="stats-body" id="statsBody">
         <div class="day-chart" id="dayChart"></div>
         <div id="peakCaption"></div>
         <h3 class="card-subtitle">Theo loại chi tiêu</h3>
@@ -1882,6 +1933,8 @@
     const ownerLabel = document.getElementById("ownerLabel");
     const balNum = document.getElementById("balanceNumber");
     const beam = document.getElementById("beamGroup");
+    const hangerLeft = document.getElementById("hangerLeft");
+    const hangerRight = document.getElementById("hangerRight");
     const balanceCard = document.getElementById("balanceCard");
     const ownerIcon = document.getElementById("ownerIcon");
 
@@ -1900,6 +1953,20 @@
     const tiltRatio = Math.max(-1, Math.min(1, balance.net / Math.max(1, grandTotal*0.15)));
     const tilt = isZero ? 0 : (balance.net > 0 ? 1 : -1) * tiltMax * Math.min(1, Math.abs(tiltRatio)+0.35);
     beam.style.transform = "rotate(" + tilt + "deg)";
+
+    // Pans hang straight down under gravity: the cord+pan groups are
+    // translated (not rotated) so their attach point rides the tilted
+    // beam while the hex pan itself always stays level, same as
+    // can-bang.html's rig.
+    const PIVOT_X = 400, PIVOT_Y = 189, ARM = 190;
+    const theta = tilt * Math.PI / 180;
+    const cosT = Math.cos(theta), sinT = Math.sin(theta);
+    const leftAttachX  = PIVOT_X - ARM * cosT;
+    const leftAttachY  = PIVOT_Y - ARM * sinT;
+    const rightAttachX = PIVOT_X + ARM * cosT;
+    const rightAttachY = PIVOT_Y + ARM * sinT;
+    hangerLeft.style.transform  = "translate(" + (leftAttachX  - 210) + "px, " + (leftAttachY  - 189) + "px)";
+    hangerRight.style.transform = "translate(" + (rightAttachX - 590) + "px, " + (rightAttachY - 189) + "px)";
 
     const wrapCk = (s) => '<b class="c-ck">' + s + '</b>';
     const wrapVk = (s) => '<b class="c-vk">' + s + '</b>';
