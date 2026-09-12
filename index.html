@@ -380,6 +380,14 @@
   .scale-pan-text-vk{ fill:var(--vk); filter:drop-shadow(0 0 6px rgba(var(--vk-rgb),0.9)); }
   .scale-pivot-cap{ fill:var(--gold); filter:drop-shadow(0 0 12px rgba(var(--gold-rgb),0.9)); animation:scalePulse 3s ease-in-out infinite; }
   @keyframes scalePulse{ 0%,100%{ opacity:1; } 50%{ opacity:.55; } }
+  .scale-taiji{ transform-origin:400px 158px; animation:scaleTaijiSpin 16s linear infinite; }
+  @keyframes scaleTaijiSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+  .scale-taiji-glow{ animation:scalePulse 3s ease-in-out infinite; }
+  .scale-taiji-base{ fill:var(--chong); filter:drop-shadow(0 0 10px rgba(var(--chong-rgb),0.9)); }
+  .scale-taiji-swirl{ fill:var(--vk); filter:drop-shadow(0 0 10px rgba(var(--vk-rgb),0.9)); }
+  .scale-taiji-dot-vk{ fill:var(--vk); }
+  .scale-taiji-dot-chong{ fill:var(--chong); }
+  .scale-taiji-ring{ fill:none; stroke:var(--gold); stroke-width:1.2; filter:drop-shadow(0 0 8px rgba(var(--gold-rgb),0.8)); }
   .scale-orbit{ transform-origin:400px 158px; animation:scaleSpin 9s linear infinite; }
   .scale-orbit2{ transform-origin:400px 158px; animation:scaleSpin 14s linear infinite reverse; }
   @keyframes scaleSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
@@ -390,6 +398,9 @@
   html[data-theme="light"] .scale-pan-text-chong,
   html[data-theme="light"] .scale-pan-text-vk{ filter:none; }
   html[data-theme="light"] .scale-pivot-cap{ filter:drop-shadow(0 0 6px rgba(var(--gold-rgb),0.55)); }
+  html[data-theme="light"] .scale-taiji-ring{ filter:drop-shadow(0 0 5px rgba(var(--gold-rgb),0.5)); }
+  html[data-theme="light"] .scale-taiji-base{ filter:drop-shadow(0 0 5px rgba(var(--chong-rgb),0.5)); }
+  html[data-theme="light"] .scale-taiji-swirl{ filter:drop-shadow(0 0 5px rgba(var(--vk-rgb),0.5)); }
   html[data-theme="light"] .scale-ring{ opacity:.5; }
   .hero-right{ flex:1 1 280px; min-width:240px; }
   .balance-card{
@@ -866,7 +877,7 @@
   @media (prefers-reduced-motion: reduce){
     #beamGroup{ transition:none; }
     #hangerLeft,#hangerRight{ transition:none; }
-    .scale-pivot-cap,.scale-orbit,.scale-orbit2{ animation:none !important; }
+    .scale-pivot-cap,.scale-orbit,.scale-orbit2,.scale-taiji,.scale-taiji-glow{ animation:none !important; }
     .cat-bar-fill{ transition:none; }
     .day-bar{ transition:filter .12s ease; }
     .hud-clock-dot{ animation:none; }
@@ -1031,7 +1042,7 @@
 
     <section class="hero">
       <div class="scale-box">
-        <svg viewBox="0 0 800 340">
+        <svg viewBox="0 100 800 240">
           <!-- stand -->
           <polygon class="scale-stand-tri" points="400,158 340,330 460,330"/>
           <line x1="330" y1="330" x2="470" y2="330" class="scale-stand-base"/>
@@ -1047,9 +1058,11 @@
 
           <g class="scale-orbit">
             <circle class="scale-spark" cx="400" cy="124" r="4"/>
-            <circle class="scale-spark" cx="434" cy="158" r="4" opacity="0.7"/>
-            <circle class="scale-spark" cx="366" cy="158" r="4" opacity="0.7"/>
-            <circle class="scale-spark" cx="400" cy="192" r="4" opacity="0.7"/>
+            <circle class="scale-spark" cx="429.4" cy="141" r="4"/>
+            <circle class="scale-spark" cx="429.4" cy="175" r="4"/>
+            <circle class="scale-spark" cx="400" cy="192" r="4"/>
+            <circle class="scale-spark" cx="370.6" cy="175" r="4"/>
+            <circle class="scale-spark" cx="370.6" cy="141" r="4"/>
           </g>
 
           <!-- left cord + hex pan: translated independently so it always hangs level -->
@@ -1066,8 +1079,16 @@
             <text x="590" y="286" class="scale-pan-text scale-pan-text-vk">VỢ</text>
           </g>
 
-          <!-- pivot -->
-          <polygon class="scale-pivot-cap" points="400,178 412,189 400,200 388,189"/>
+          <!-- pivot: thái cực (yin-yang) tự xoay, phát sáng theo màu Chồng/Vợ -->
+          <g class="scale-taiji-glow">
+            <g class="scale-taiji">
+              <circle cx="400" cy="158" r="10" class="scale-taiji-base"/>
+              <path d="M400,148 A10,10 0 0,1 400,168 A5,5 0 0,1 400,158 A5,5 0 0,0 400,148 Z" class="scale-taiji-swirl"/>
+              <circle cx="400" cy="153" r="1.8" class="scale-taiji-dot-vk"/>
+              <circle cx="400" cy="163" r="1.8" class="scale-taiji-dot-chong"/>
+            </g>
+            <circle cx="400" cy="158" r="10" class="scale-taiji-ring"/>
+          </g>
         </svg>
       </div>
 
