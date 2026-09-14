@@ -391,17 +391,36 @@
   .scale-orbit{ transform-origin:400px 158px; animation:scaleSpin 9s linear infinite; }
   .scale-orbit2{ transform-origin:400px 158px; animation:scaleSpin 14s linear infinite reverse; }
   @keyframes scaleSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
-  .scale-ring{ fill:none; stroke:var(--scale-violet); opacity:.35; }
+  .scale-ring{ fill:none; stroke:var(--scale-violet); stroke-width:2.2; stroke-linecap:round; opacity:.35; }
+  .scale-end-chong{ stroke:var(--chong); fill:rgba(var(--chong-rgb),0.1); filter:drop-shadow(0 0 8px rgba(var(--chong-rgb),0.85)); stroke-width:1.6; }
+  .scale-end-vk{ stroke:var(--vk); fill:rgba(var(--vk-rgb),0.1); filter:drop-shadow(0 0 8px rgba(var(--vk-rgb),0.85)); stroke-width:1.6; }
+  .scale-end-dot{ fill:var(--gold); filter:drop-shadow(0 0 4px rgba(var(--gold-rgb),0.9)); }
   .scale-spark{ fill:var(--gold); }
+  /* Giao diện sáng cho cái cân: bản gốc chỉ HẠ độ mờ của hiệu ứng glow neon (vốn
+     thiết kế riêng cho nền tối) nên trên nền sáng mọi thứ vẫn bị nhạt nhòa, yếu ớt,
+     vàng "gold" ngả nâu bẩn, và các đường viền tam giác/vòng tròn gần như biến mất.
+     Làm lại theo đúng ngôn ngữ thiết kế đã dùng cho các khối khác ở giao diện sáng
+     trong file này: bỏ hẳn halo màu, thay bằng đổ bóng trung tính (rgba(16,24,32,x))
+     để tạo chiều sâu sạch sẽ, đồng thời tăng opacity/độ đậm các nét viền để không bị chìm
+     vào nền trắng, và đổi tông vàng sang màu hổ phách rõ ràng hơn thay vì màu nâu xỉn. */
+  html[data-theme="light"] .scale-stand-tri{ opacity:.8; }
+  html[data-theme="light"] .scale-stand-base{ filter:drop-shadow(0 2px 3px rgba(16,24,32,0.18)); }
+  html[data-theme="light"] .scale-beam-fill{ fill:rgba(var(--scale-beam-rgb),0.14); }
+  html[data-theme="light"] .scale-beam-bar{ filter:drop-shadow(0 2px 4px rgba(16,24,32,0.18)); }
+  html[data-theme="light"] .scale-tick{ opacity:.6; }
+  html[data-theme="light"] .scale-ring{ opacity:.7; stroke-width:2.4; }
   html[data-theme="light"] .scale-pan-chong,
-  html[data-theme="light"] .scale-pan-vk{ filter:drop-shadow(0 0 4px rgba(0,0,0,0.1)); }
+  html[data-theme="light"] .scale-pan-vk{ filter:drop-shadow(0 3px 6px rgba(16,24,32,0.16)); }
   html[data-theme="light"] .scale-pan-text-chong,
   html[data-theme="light"] .scale-pan-text-vk{ filter:none; }
-  html[data-theme="light"] .scale-pivot-cap{ filter:drop-shadow(0 0 6px rgba(var(--gold-rgb),0.55)); }
-  html[data-theme="light"] .scale-taiji-ring{ filter:drop-shadow(0 0 5px rgba(var(--gold-rgb),0.5)); }
-  html[data-theme="light"] .scale-taiji-base{ filter:drop-shadow(0 0 5px rgba(var(--chong-rgb),0.5)); }
-  html[data-theme="light"] .scale-taiji-swirl{ filter:drop-shadow(0 0 5px rgba(var(--vk-rgb),0.5)); }
-  html[data-theme="light"] .scale-ring{ opacity:.5; }
+  html[data-theme="light"] .scale-pivot-cap{ fill:#C9891B; filter:drop-shadow(0 2px 4px rgba(16,24,32,0.28)); }
+  html[data-theme="light"] .scale-taiji-base,
+  html[data-theme="light"] .scale-taiji-swirl{ filter:none; }
+  html[data-theme="light"] .scale-taiji-ring{ stroke:#C9891B; filter:none; opacity:.8; }
+  html[data-theme="light"] .scale-end-chong,
+  html[data-theme="light"] .scale-end-vk{ filter:drop-shadow(0 1px 3px rgba(16,24,32,0.16)); }
+  html[data-theme="light"] .scale-end-dot{ fill:#C9891B; filter:drop-shadow(0 1px 2px rgba(16,24,32,0.25)); }
+  html[data-theme="light"] .scale-spark{ fill:#C9891B; filter:drop-shadow(0 1px 2px rgba(16,24,32,0.22)); }
   .hero-right{ flex:1 1 280px; min-width:240px; }
   .balance-card{
     border-radius:16px; border:1px solid transparent; overflow:hidden; margin-bottom:2px;
@@ -1048,21 +1067,25 @@
           <line x1="330" y1="330" x2="470" y2="330" class="scale-stand-base"/>
 
           <!-- orbit rings + sparks around pivot -->
-          <g class="scale-orbit"><circle class="scale-ring" cx="400" cy="158" r="34" stroke-dasharray="2 6"/></g>
-          <g class="scale-orbit2"><circle class="scale-ring" cx="400" cy="158" r="46" stroke-dasharray="1 5"/></g>
+          <g class="scale-orbit"><circle class="scale-ring" cx="400" cy="158" r="38" stroke-dasharray="3 7"/></g>
+          <g class="scale-orbit2"><circle class="scale-ring" cx="400" cy="158" r="52" stroke-dasharray="2.4 6"/></g>
           <g id="beamGroup">
             <rect x="190" y="181" width="420" height="16" rx="3" class="scale-beam-fill" stroke="none"/>
             <rect x="190" y="181" width="420" height="16" rx="3" class="scale-beam-bar"/>
             <line x1="240" y1="189" x2="560" y2="189" class="scale-tick" stroke-dasharray="4 6"/>
+            <polygon class="scale-end-chong" points="172,189 190,181 208,189 190,197"/>
+            <circle class="scale-end-dot" cx="190" cy="189" r="2.5"/>
+            <polygon class="scale-end-vk" points="592,189 610,181 628,189 610,197"/>
+            <circle class="scale-end-dot" cx="610" cy="189" r="2.5"/>
           </g>
 
           <g class="scale-orbit">
-            <circle class="scale-spark" cx="400" cy="124" r="4"/>
-            <circle class="scale-spark" cx="429.4" cy="141" r="4"/>
-            <circle class="scale-spark" cx="429.4" cy="175" r="4"/>
-            <circle class="scale-spark" cx="400" cy="192" r="4"/>
-            <circle class="scale-spark" cx="370.6" cy="175" r="4"/>
-            <circle class="scale-spark" cx="370.6" cy="141" r="4"/>
+            <circle class="scale-spark" cx="400" cy="120" r="4"/>
+            <circle class="scale-spark" cx="432.9" cy="139" r="4"/>
+            <circle class="scale-spark" cx="432.9" cy="177" r="4"/>
+            <circle class="scale-spark" cx="400" cy="196" r="4"/>
+            <circle class="scale-spark" cx="367.1" cy="177" r="4"/>
+            <circle class="scale-spark" cx="367.1" cy="139" r="4"/>
           </g>
 
           <!-- left cord + hex pan: translated independently so it always hangs level -->
