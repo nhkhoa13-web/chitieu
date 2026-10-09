@@ -903,3 +903,9 @@
     .info-box{ padding:6px 12px 12px; gap:7px; }
     .info-row{ padding:10px 11px; }
   }
+
+  /* ---- PWA: chừa vùng an toàn phía trên (tai thỏ / thanh trạng thái) khi chạy toàn màn hình ---- */
+  header.top{ padding-top:calc(16px + env(safe-area-inset-top, 0px)); }
+  @media (max-width:480px){
+    header.top{ padding-top:calc(14px + env(safe-area-inset-top, 0px)); }
+  }

@@ -2988,3 +2988,13 @@ function initParticleNetwork(){
   }
 }
 initParticleNetwork();
+
+// ================== PWA: đăng ký Service Worker ==================
+// Cần HTTPS (GitHub Pages) hoặc localhost. Lỗi đăng ký không được làm hỏng app.
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(err){
+      console.warn("Không đăng ký được Service Worker:", err);
+    });
+  });
+}
