@@ -34,6 +34,21 @@
     }
   })();
 </script>
+<script>
+  // Splash động chỉ hiện khi mở từ icon màn hình chính (chế độ app), 1 lần mỗi phiên.
+  // Thêm ?splash=1 vào URL để xem thử ngay trên trình duyệt.
+  (function () {
+    try {
+      var d = window.matchMedia;
+      var isApp = (d && (matchMedia("(display-mode: standalone)").matches ||
+                         matchMedia("(display-mode: fullscreen)").matches)) ||
+                  navigator.standalone === true;
+      var force = /[?&]splash=1/.test(location.search);
+      var seen = sessionStorage.getItem("so_chi_tieu:splash") === "1";
+      if (force || (isApp && !seen)) document.documentElement.classList.add("splash-on");
+    } catch (e) {}
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -41,6 +56,32 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+  <!-- Splash động (PWA): hiện ngay sau splash hệ thống, tự gỡ sau ~2s hoặc khi chạm vào -->
+  <div id="splash" aria-hidden="true">
+    <div class="sp-glow sp-glow-a"></div>
+    <div class="sp-glow sp-glow-b"></div>
+    <div class="sp-center">
+      <svg class="sp-logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="spC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6CF6FB"/><stop offset="1" stop-color="#29E7F0"/></linearGradient>
+          <linearGradient id="spP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6AB0"/><stop offset="1" stop-color="#F7318F"/></linearGradient>
+        </defs>
+        <rect class="sp-base" x="28" y="166" width="144" height="5" rx="2.5" fill="#25384C"/>
+        <rect class="sp-bar-c" x="52" y="62" width="40" height="100" rx="11" fill="url(#spC)"/>
+        <rect class="sp-bar-p" x="108" y="92" width="40" height="70" rx="11" fill="url(#spP)"/>
+        <circle class="sp-ring" cx="100" cy="34" r="17" fill="none" stroke="#FFC93C" stroke-width="2"/>
+        <g class="sp-coin">
+          <circle cx="100" cy="34" r="17" fill="#FFC93C"/>
+          <circle cx="100" cy="34" r="9.5" fill="none" stroke="#B0761E" stroke-width="2.6"/>
+        </g>
+      </svg>
+      <div class="sp-title">SỔ CHI TIÊU</div>
+      <div class="sp-line"></div>
+      <div class="sp-sub"><i class="c"></i>CHỒNG<b>&amp;</b>VỢ<i class="p"></i></div>
+    </div>
+    <div class="sp-progress"><i></i></div>
+  </div>
+
   <!-- Sprite icon dùng chung (sửa/xoá) cho các dòng trong sổ chi tiêu — định nghĩa 1 lần duy nhất,
        tham chiếu lại bằng <use> thay vì lặp lại toàn bộ <path> ở mỗi dòng. Khi sổ có nhiều khoản chi,
        renderLedger() dựng lại toàn bộ danh sách bằng innerHTML mỗi khi gõ tìm kiếm/đổi sắp xếp/thêm-sửa-xoá,

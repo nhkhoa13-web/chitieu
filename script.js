@@ -2998,3 +2998,24 @@ if("serviceWorker" in navigator){
     });
   });
 }
+
+
+// ================== PWA: điều khiển Splash động ==================
+// Tự gỡ sau SPLASH_MIN_MS (hoặc chạm vào để bỏ qua). Mỗi phiên chỉ hiện 1 lần (tải lại trang không chiếu lại).
+(function(){
+  var el = document.getElementById("splash");
+  if(!el) return;
+  var root = document.documentElement;
+  if(!root.classList.contains("splash-on")){ el.remove(); return; }
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var SPLASH_MIN_MS = reduce ? 1000 : 2300;
+  var done = false;
+  try{ sessionStorage.setItem("so_chi_tieu:splash", "1"); }catch(e){}
+  function hide(){
+    if(done) return; done = true;
+    el.classList.add("out");
+    setTimeout(function(){ el.remove(); root.classList.remove("splash-on"); }, reduce ? 350 : 650);
+  }
+  setTimeout(hide, SPLASH_MIN_MS);
+  el.addEventListener("click", hide);
+})();
