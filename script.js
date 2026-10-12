@@ -107,13 +107,14 @@
     if(metaTheme) metaTheme.setAttribute("content", isLight ? "#F2F5F9" : "#080B10");
   }
 
-  // Bật/tắt tự động tải từ Google Sheet khi mở app hoặc chuyển tháng. Mặc định TẮT,
-  // người dùng có thể bật bằng icon cạnh icon menu (⋮) — trạng thái được nhớ lại.
+  // Bật/tắt tự động tải bản mới từ Google Sheet khi mở app, quay lại app (sau >= 2 phút) hoặc chuyển tháng.
+  // Mặc định BẬT (sổ này dùng chung cho 2 người nên cần thấy khoản chi của nhau); người dùng có thể tắt bằng
+  // icon cạnh icon menu (⋮) — lựa chọn được nhớ lại.
   function getAutoPull(){
     try{
       const raw = localStorage.getItem(AUTO_PULL_KEY);
-      return raw === null ? false : raw === "1";
-    }catch(e){ return false; }
+      return raw === null ? true : raw === "1";
+    }catch(e){ return true; }
   }
   function setAutoPull(val){
     try{ localStorage.setItem(AUTO_PULL_KEY, val ? "1" : "0"); }catch(e){ /* ignore */ }
@@ -127,8 +128,8 @@
     btn.classList.toggle("off", !on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
     btn.title = on
-      ? "Đang BẬT tự động tải khi mở app/chuyển tháng — bấm để tắt"
-      : "Đang TẮT tự động tải khi mở app/chuyển tháng — bấm để bật";
+      ? "Đang BẬT tự động tải bản mới khi mở/quay lại app và chuyển tháng — bấm để tắt"
+      : "Đang TẮT tự động tải bản mới — bấm để bật";
   }
 
   // ---------- Helpers ----------
@@ -353,176 +354,469 @@
     }catch(e){ /* cache hỏng — bỏ qua, dùng dữ liệu mặc định */ }
     return false;
   }
+  // =====================================================================
+  //  BỘ MÁY ĐỒNG BỘ GOOGLE SHEET
+  //  Mọi thao tác mạng với Sheet — gửi thay đổi, xoá/nhập cả tháng, tải về — chạy TUẦN TỰ qua 1 khoá duy nhất
+  //  (withSyncLock), nên không bao giờ chồng chéo nhau. Quy tắc cốt lõi:
+  //   1) Tải về (pull) luôn gửi nốt hàng đợi trước, rồi tải, rồi "phủ lại" các thay đổi chưa lên được Sheet
+  //      lên dữ liệu vừa tải -> khoản vừa thêm không bao giờ biến mất khỏi màn hình.
+  //   2) Phân loại lỗi: mất mạng/quá giờ -> tự thử lại; hết phiên -> chờ đăng nhập; cấu hình sai -> báo rõ;
+  //      Sheet từ chối dữ liệu -> chuyển sang danh sách "bị từ chối", KHÔNG chặn các thay đổi phía sau.
+  //   3) Xoá/nhập cả tháng đi cùng hàng đợi (đúng thứ tự, có thử lại), nên tháng đã xoá không "sống lại".
+  //   4) Dòng trạng thái luôn tính từ tình hình thật (refreshSyncStatus), không còn nơi nào ghi đè lung tung.
+  // =====================================================================
+  const REJECTED_KEY = "so_chi_tieu:rejected:v1";
+  const LAST_PULL_KEY = "so_chi_tieu:last_pull_at";
+  const REQUEST_TIMEOUT_MS = 20000;                    // 1 request quá lâu -> coi như mất mạng, thử lại sau
+  const RETRY_DELAYS_MS = [2000, 5000, 15000, 60000];  // nhịp thử lại khi lỗi tạm thời (mức cuối lặp lại)
+  const AUTO_PULL_MIN_GAP_MS = 2 * 60 * 1000;          // quay lại app: chỉ tự tải nếu lần tải trước đã cách >= 2 phút
+  const FATAL_ERROR_RE = /Sai token|Không rõ action|Chưa cấu hình/i; // lỗi cấu hình: thử lại vô ích
+
+  let syncQueue = [];       // thay đổi chờ gửi lên Sheet (lưu localStorage để không mất khi đóng app)
+  let rejectedItems = [];   // [{ item, error, at }] thay đổi bị Sheet từ chối — chờ người dùng quyết: thử lại / bỏ
+  let syncSeq = 0;          // số thứ tự tăng dần của mỗi thay đổi (giữ đúng thứ tự khi phủ lại / thử lại)
+  let syncTimer = null;     // hẹn giờ gửi (gộp nhiều thay đổi liên tiếp)
+  let retryTimer = null;    // hẹn giờ thử lại sau lỗi tạm thời
+  let retryAttempt = 0;
+  let retryAt = 0;
+  let statusTick = null;
+  let syncLock = Promise.resolve();
+  let syncInFlight = null;  // mục đang gửi dở
+  let syncPhase = "idle";   // idle | push | pull
+  let lastSyncError = null; // { kind: "network" | "fatal", message }
+  let startedWithCache = false;
+
   function saveQueue(){
     try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(syncQueue)); }catch(e){ /* ignore */ }
+  }
+  function saveRejected(){
+    try{ localStorage.setItem(REJECTED_KEY, JSON.stringify(rejectedItems)); }catch(e){ /* ignore */ }
   }
   function loadQueue(){
     try{
       const raw = localStorage.getItem(QUEUE_KEY);
-      if(raw){
-        const parsed = JSON.parse(raw);
-        if(Array.isArray(parsed)) syncQueue = parsed;
-      }
+      if(raw){ const parsed = JSON.parse(raw); if(Array.isArray(parsed)) syncQueue = parsed; }
     }catch(e){ /* ignore */ }
+    try{
+      const raw = localStorage.getItem(REJECTED_KEY);
+      if(raw){ const parsed = JSON.parse(raw); if(Array.isArray(parsed)) rejectedItems = parsed.filter(r => r && r.item); }
+    }catch(e){ /* ignore */ }
+    // Mục lưu từ phiên bản cũ chưa có số thứ tự -> đánh số theo vị trí.
+    let max = 0;
+    syncQueue.forEach(it => { if(it && it.seq > max) max = it.seq; });
+    rejectedItems.forEach(r => { if(r.item.seq > max) max = r.item.seq; });
+    syncQueue.forEach(it => { if(!it.seq) it.seq = ++max; });
+    rejectedItems.forEach(r => { if(!r.item.seq) r.item.seq = ++max; });
+    syncSeq = max;
   }
-  function markSynced(){
+  function pendingChangeCount(){ return syncQueue.length + rejectedItems.length; }
+  function markPushed(){
     try{ localStorage.setItem(LAST_SYNC_KEY, String(Date.now())); }catch(e){ /* ignore */ }
   }
+  function markPulled(){
+    try{ localStorage.setItem(LAST_PULL_KEY, String(Date.now())); }catch(e){ /* ignore */ }
+  }
   function getLastSyncAt(){
-    try{
-      const raw = localStorage.getItem(LAST_SYNC_KEY);
-      return raw ? Number(raw) : null;
-    }catch(e){ return null; }
+    try{ const raw = localStorage.getItem(LAST_SYNC_KEY); return raw ? Number(raw) : null; }catch(e){ return null; }
+  }
+  function getLastPullAt(){
+    try{ const raw = localStorage.getItem(LAST_PULL_KEY); return raw ? Number(raw) : null; }catch(e){ return null; }
   }
 
   // ---------- Khởi tạo ----------
   async function loadData(){
-    const hadCache = loadCache();
+    startedWithCache = loadCache();
     loadQueue();
     renderMonthUI();
     render();
     renderAutoPullToggle();
     renderThemeToggle();
-    if(!SHEET_SYNC_URL){
-      setSyncStatus("Chưa cấu hình đồng bộ Google Sheet", true);
-      return;
-    }
-    if(syncQueue.length){
-      // Có thay đổi từ phiên trước chưa chắc đã lên được Sheet (ví dụ mất mạng giữa chừng) -> thử đẩy lại ngay.
-      setSyncStatus("Đang gửi nốt " + syncQueue.length + " thay đổi còn treo…", false);
-      await processSyncQueue();
-    }
-    if(getAutoPull()){
-      await pullMonth(currentMonthKey);
-    }else if(hadCache){
-      setSyncStatus("Đang xem dữ liệu lưu tạm — chưa đồng bộ", false);
-    }else{
-      setSyncStatus("Chưa đồng bộ", false);
-    }
-    checkStaleSync();
+    refreshSyncStatus();
+    if(!SHEET_SYNC_URL) return;
+    // Tải về luôn gửi nốt hàng đợi trước; nếu tắt tự tải thì chỉ gửi nốt thay đổi còn treo từ phiên trước.
+    if(getAutoPull()) await pullMonth(currentMonthKey);
+    else if(syncQueue.length) await processSyncQueue();
+    refreshSyncStatus();
   }
 
-  // ---------- Google Sheet sync (2 chiều: pull + merge, rồi push phần chênh lệch) ----------
+  // ---------- Dòng trạng thái: luôn tính từ tình hình thật ----------
   function setSyncStatus(text, isError){
     const el = document.getElementById("syncStatus");
     if(!el) return;
     el.textContent = text || "";
     el.style.color = isError ? "var(--vk-soft)" : "var(--text-faint)";
   }
-  let syncQueue = [];
-  let syncQueueTimer = null;
-  let syncQueueProcessing = false;
-
-  function queueSync(action, entry){
-    if(!SHEET_SYNC_URL) return;
-    syncQueue.push({ action, monthKey: currentMonthKey, entry });
-    saveQueue();
-    clearTimeout(syncQueueTimer);
-    syncQueueTimer = setTimeout(processSyncQueue, 500);
+  function fmtClock(ms){
+    return new Date(ms).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
   }
-  async function processSyncQueue(){
-    if(syncQueueProcessing) return;
-    syncQueueProcessing = true;
-    setSyncStatus("Đang đồng bộ…", false);
-    let hadError = false;
-    while(syncQueue.length){
-      const item = syncQueue[0];
-      try{
-        const payload = {
-          token: SHEET_SYNC_TOKEN,
-          sessionToken: sessionToken,
-          action: item.action,
-          monthKey: item.monthKey,
-          entry: item.entry
-        };
-        const res = await fetch(SHEET_SYNC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json().catch(() => null);
-        if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
-        noteSessionExp(data);
-        if(!res.ok || !data || data.ok !== true){
-          throw new Error((data && data.error) || ("HTTP " + res.status));
-        }
-        syncQueue.shift();
-        saveQueue(); // xong 1 mục -> cập nhật ngay hàng đợi đã lưu, tránh gửi lại nếu tải lại trang
-      }catch(err){
-        hadError = true;
-        console.error("sync error", err);
-        break; // dừng hàng đợi (mục lỗi vẫn còn trong queue để thử lại lần sau), giữ trạng thái lỗi
+  function refreshSyncStatus(){
+    const el = document.getElementById("syncStatus");
+    if(!el) return;
+    const n = syncQueue.length, r = rejectedItems.length;
+    let text, isError = false, clickable = false;
+    if(!SHEET_SYNC_URL){
+      text = "Chưa cấu hình đồng bộ Google Sheet"; isError = true;
+    }else if(syncPhase === "push"){
+      text = "Đang gửi " + n + " thay đổi lên Sheet…";
+    }else if(syncPhase === "pull"){
+      text = "Đang tải bản mới từ Sheet…";
+    }else if(r > 0){
+      text = "⚠ " + r + " thay đổi bị Sheet từ chối — bấm để xem"; isError = true; clickable = true;
+    }else if(lastSyncError && n > 0){
+      if(lastSyncError.kind === "fatal"){
+        text = "⚠ " + lastSyncError.message + " — còn " + n + " thay đổi chưa gửi";
+      }else{
+        const wait = retryAt ? Math.max(1, Math.ceil((retryAt - Date.now()) / 1000)) : 0;
+        text = "Chờ kết nối — còn " + n + " thay đổi chưa gửi" + (wait ? " (thử lại sau " + wait + "s)" : "");
+      }
+      isError = true;
+    }else if(n > 0){
+      text = "Còn " + n + " thay đổi chờ gửi…";
+    }else if(lastSyncError){
+      text = "Không tải được bản mới từ Sheet — " + lastSyncError.message; isError = true;
+    }else{
+      const push = getLastSyncAt(), pull = getLastPullAt();
+      if(pull && Date.now() - pull >= STALE_SYNC_MS && !getAutoPull()){
+        text = "⚠️ Đã " + Math.floor((Date.now() - pull) / 60000) + " phút chưa tải bản mới từ Sheet"; isError = true;
+      }else if(pull && (!push || push <= pull || fmtClock(push) === fmtClock(pull))){
+        text = "Đã đồng bộ lúc " + fmtClock(pull);
+      }else if(pull){
+        text = "Đã gửi lúc " + fmtClock(push) + " · tải bản mới lúc " + fmtClock(pull);
+      }else if(push){
+        text = "Đã gửi lên Sheet lúc " + fmtClock(push) + " · chưa tải bản mới";
+      }else{
+        text = startedWithCache ? "Đang xem dữ liệu lưu tạm — chưa đồng bộ" : "Chưa đồng bộ";
       }
     }
-    syncQueueProcessing = false;
-    if(hadError){
-      setSyncStatus("Đồng bộ thất bại — còn " + syncQueue.length + " thay đổi chưa gửi", true);
-    }else{
-      markSynced();
-      const now = new Date();
-      setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
+    setSyncStatus(text, isError);
+    el.classList.toggle("clickable", clickable);
+  }
+  function startStatusTick(){
+    if(statusTick) return;
+    statusTick = setInterval(() => {
+      refreshSyncStatus();
+      if(!retryAt){ clearInterval(statusTick); statusTick = null; }
+    }, 1000);
+  }
+  setInterval(refreshSyncStatus, 60000); // nhắc nhẹ nếu đã lâu chưa tải bản mới (khi tắt tự tải)
+
+  // ---------- Gọi Sheet: phân loại lỗi ----------
+  // kind: "network" (mất mạng / quá giờ / máy chủ lỗi tạm -> thử lại) | "auth" (hết phiên) |
+  //       "fatal" (cấu hình sai) | "rejected" (Sheet từ chối dữ liệu này)
+  class SyncError extends Error{
+    constructor(kind, message){ super(message); this.kind = kind; }
+  }
+  async function sheetRequest(body, timeoutMs){
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs || REQUEST_TIMEOUT_MS);
+    let res = null, data = null;
+    try{
+      res = await fetch(SHEET_SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(Object.assign({ token: SHEET_SYNC_TOKEN, sessionToken: sessionToken }, body)),
+        signal: ctl.signal
+      });
+      data = await res.json().catch(() => null);
+    }catch(err){
+      throw new SyncError("network", (err && err.name === "AbortError") ? "Quá thời gian chờ máy chủ" : "Không kết nối được máy chủ");
+    }finally{
+      clearTimeout(timer);
     }
+    if(data && data.authError) throw new SyncError("auth", data.error || "Hết phiên đăng nhập");
+    noteSessionExp(data);
+    if(!res.ok || !data) throw new SyncError("network", "Máy chủ trả về lỗi (HTTP " + res.status + ")");
+    if(data.ok !== true){
+      const msg = data.error || "Sheet từ chối thay đổi này";
+      if(data.retryable) throw new SyncError("network", msg);
+      if(FATAL_ERROR_RE.test(msg)) throw new SyncError("fatal", msg);
+      throw new SyncError("rejected", msg);
+    }
+    return data;
+  }
+  function toSyncError(err){
+    return (err instanceof SyncError) ? err : new SyncError("network", (err && err.message) || "Lỗi không xác định");
   }
 
-  // Luôn tải lại đúng dữ liệu tháng monthKey từ Google Sheet và hiển thị — Sheet là nguồn dữ liệu duy nhất.
-  async function pullMonth(monthKey, opts){
+  // ---------- Hàng đợi ----------
+  function withSyncLock(fn){
+    const run = syncLock.then(() => fn());
+    syncLock = run.then(() => {}, () => {});
+    return run;
+  }
+  function enqueueItem(item){
+    item.seq = ++syncSeq;
+    item.attempts = 0;
+    syncQueue.push(item);
+    saveQueue();
+    refreshSyncStatus();
+    return item;
+  }
+  function scheduleSync(delay){
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => { processSyncQueue(); }, delay);
+  }
+  function queueSync(action, entry){
+    if(!SHEET_SYNC_URL) return;
+    enqueueItem({ action, monthKey: currentMonthKey, entry });
+    scheduleSync(500);
+  }
+  // Bỏ các thay đổi CHƯA gửi của 1 tháng (sắp bị xoá/ghi đè nguyên tháng nên vô nghĩa). Giữ mục đang gửi dở để thứ tự vẫn đúng.
+  function purgePending(monthKey){
+    syncQueue = syncQueue.filter(it => it.monthKey !== monthKey || it === syncInFlight);
+    rejectedItems = rejectedItems.filter(r => r.item.monthKey !== monthKey);
+    saveQueue();
+    saveRejected();
+  }
+  function queueDeleteMonth(monthKey){
+    if(!SHEET_SYNC_URL) return;
+    purgePending(monthKey);
+    enqueueItem({ action: "deleteMonth", monthKey });
+    scheduleSync(300);
+  }
+  function queueSyncMonth(monthKey, monthEntries){
+    purgePending(monthKey);
+    return enqueueItem({ action: "syncMonth", monthKey, entries: monthEntries });
+  }
+  function buildPayload(item){
+    if(item.action === "syncMonth") return { action: "syncMonth", monthKey: item.monthKey, entries: item.entries || [] };
+    if(item.action === "deleteMonth") return { action: "deleteMonth", monthKey: item.monthKey };
+    return { action: item.action, monthKey: item.monthKey, entry: item.entry };
+  }
+  function removeFromQueue(item){
+    const i = syncQueue.indexOf(item);
+    if(i >= 0) syncQueue.splice(i, 1);
+  }
+  function scheduleRetry(){
+    clearTimeout(retryTimer);
+    const delay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)];
+    retryAttempt++;
+    retryAt = Date.now() + delay;
+    retryTimer = setTimeout(() => { retryAt = 0; processSyncQueue(); }, delay);
+    startStatusTick();
+  }
+  function signedIn(){ return !GOOGLE_CLIENT_ID || !!sessionRecord; }
+
+  // Gửi lần lượt các mục trong hàng đợi (CHỈ gọi bên trong withSyncLock). Trả về { ok } hoặc { ok:false, kind }.
+  async function drainQueue(){
+    clearTimeout(syncTimer);
+    clearTimeout(retryTimer);
+    retryAt = 0;
+    if(!SHEET_SYNC_URL) return { ok: true };
+    if(!syncQueue.length){ lastSyncError = null; return { ok: true }; }
+    if(!signedIn()) return { ok: false, kind: "auth" }; // chưa đăng nhập: đăng nhập xong loadData() sẽ chạy lại
+    syncPhase = "push";
+    refreshSyncStatus();
+    let result = { ok: true };
+    try{
+      while(syncQueue.length){
+        const item = syncQueue[0];
+        syncInFlight = item;
+        try{
+          await sheetRequest(buildPayload(item));
+          removeFromQueue(item);
+          saveQueue();   // xong 1 mục -> lưu ngay, tránh gửi lại nếu tải lại trang
+          markPushed();
+          retryAttempt = 0;
+          lastSyncError = null;
+        }catch(raw){
+          const err = toSyncError(raw);
+          item.attempts = (item.attempts || 0) + 1;
+          if(err.kind === "rejected"){
+            // Sheet từ chối RIÊNG mục này (lỗi dữ liệu) -> tách ra, các mục phía sau vẫn được gửi.
+            removeFromQueue(item);
+            rejectedItems.push({ item, error: err.message, at: Date.now() });
+            saveQueue();
+            saveRejected();
+            continue;
+          }
+          if(err.kind === "auth"){
+            result = { ok: false, kind: "auth" };
+            handleSyncAuthError({ authError: true, error: err.message });
+            break;
+          }
+          lastSyncError = { kind: err.kind, message: err.message }; // network | fatal: dừng, giữ nguyên hàng đợi
+          result = { ok: false, kind: err.kind };
+          saveQueue();
+          console.warn("sync:", err.kind, err.message);
+          break;
+        }finally{
+          syncInFlight = null;
+        }
+      }
+    }finally{
+      syncPhase = "idle";
+    }
+    if(!result.ok && result.kind === "network") scheduleRetry();
+    refreshSyncStatus();
+    return result;
+  }
+  function processSyncQueue(){ return withSyncLock(drainQueue); }
+
+  // ---------- Tải về ----------
+  // Phủ các thay đổi CHƯA lên được Sheet (hàng đợi + mục bị từ chối) lên dữ liệu vừa tải, theo đúng thứ tự thực hiện.
+  function overlayPending(monthKey, remoteList){
+    const map = new Map();
+    remoteList.forEach(e => map.set(String(e.id), e));
+    const ops = syncQueue.filter(it => it.monthKey === monthKey)
+      .concat(rejectedItems.map(r => r.item).filter(it => it.monthKey === monthKey))
+      .sort((a, b) => (a.seq || 0) - (b.seq || 0));
+    ops.forEach(it => {
+      if(it.action === "addEntry" || it.action === "updateEntry"){
+        if(it.entry && it.entry.id != null) map.set(String(it.entry.id), it.entry);
+      }else if(it.action === "deleteEntry"){
+        if(it.entry && it.entry.id != null) map.delete(String(it.entry.id));
+      }else if(it.action === "deleteMonth"){
+        map.clear();
+      }else if(it.action === "syncMonth"){
+        map.clear();
+        (it.entries || []).forEach(e => map.set(String(e.id), e));
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => (Number(a.day) || 0) - (Number(b.day) || 0));
+  }
+  function pullMonth(monthKey, opts){
     opts = opts || {};
     if(!SHEET_SYNC_URL){
       if(opts.manual) showErrorBanner("Chưa cấu hình SHEET_SYNC_URL. Xem hướng dẫn đồng bộ Google Sheet.");
-      return;
+      return Promise.resolve({ ok: false, kind: "fatal" });
     }
-    setSyncStatus("Đang đồng bộ…", false);
+    return withSyncLock(() => pullMonthLocked(monthKey, opts));
+  }
+  async function pullMonthLocked(monthKey, opts){
+    if(!signedIn()) return { ok: false, kind: "auth" };
+    const drained = await drainQueue(); // gửi nốt thay đổi còn treo TRƯỚC khi tải
+    if(!drained.ok){
+      if(opts.manual && drained.kind !== "auth") showErrorBanner("Chưa gửi hết thay đổi lên Sheet nên chưa tải được bản mới: " + ((lastSyncError && lastSyncError.message) || "lỗi kết nối"));
+      return drained;
+    }
+    syncPhase = "pull";
+    refreshSyncStatus();
     try{
-      const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "fetchMonth", monthKey };
-      const res = await fetch(SHEET_SYNC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => null);
-      if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
-      noteSessionExp(data);
-      if(!res.ok || !data || data.ok !== true){
-        throw new Error((data && data.error) || ("HTTP " + res.status));
-      }
-      const remoteEntries = (Array.isArray(data.entries) ? data.entries : [])
-        .slice()
-        .sort((a, b) => (Number(a.day) || 0) - (Number(b.day) || 0));
-      monthsData[monthKey] = remoteEntries;
+      const data = await sheetRequest({ action: "fetchMonth", monthKey });
+      const merged = overlayPending(monthKey, Array.isArray(data.entries) ? data.entries : []);
+      monthsData[monthKey] = merged;
       saveCache();
-
       if(monthKey === currentMonthKey){
         entries = monthsData[monthKey];
-        resetMergeSelectionState(); // dữ liệu tháng vừa được tải lại từ Sheet -> các id đang chọn để gộp có thể không còn đúng nữa
-        try{
-          render();
-        }catch(err){
-          showErrorBanner("render sau khi đồng bộ: " + err.message);
-        }
+        resetMergeSelectionState(); // danh sách vừa được làm mới -> các id đang chọn để gộp có thể không còn đúng nữa
+        try{ render(); }catch(err){ showErrorBanner("render sau khi đồng bộ: " + err.message); }
       }
-      markSynced();
-      const now = new Date();
-      setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
-    }catch(err){
-      setSyncStatus("Đồng bộ thất bại", true);
-      if(opts.manual) showErrorBanner("Đồng bộ Google Sheet thất bại: " + err.message);
-      console.error("pull error", err);
+      markPulled();
+      lastSyncError = null;
+      retryAttempt = 0;
+      return { ok: true };
+    }catch(raw){
+      const err = toSyncError(raw);
+      if(err.kind === "auth"){
+        handleSyncAuthError({ authError: true, error: err.message });
+      }else{
+        lastSyncError = { kind: err.kind === "fatal" ? "fatal" : "network", message: err.message };
+        if(opts.manual) showErrorBanner("Đồng bộ Google Sheet thất bại: " + err.message);
+      }
+      console.warn("pull:", err.kind, err.message);
+      return { ok: false, kind: err.kind };
+    }finally{
+      syncPhase = "idle";
+      refreshSyncStatus();
     }
   }
 
-  // Cảnh báo nhẹ nếu đã lâu chưa đồng bộ thành công lần nào — không tự tải dữ liệu,
-  // chỉ nhắc để bạn chủ động bấm "Đồng bộ ngay".
-  function checkStaleSync(){
-    if(!SHEET_SYNC_URL) return;
-    if(syncQueueProcessing) return;
-    const last = getLastSyncAt();
-    if(!last) return; // chưa từng đồng bộ lần nào -> giữ nguyên thông báo hiện tại, không ghi đè
-    const mins = Math.floor((Date.now() - last) / 60000);
-    if(mins * 60000 >= STALE_SYNC_MS){
-      setSyncStatus("⚠️ Đã " + mins + " phút chưa đồng bộ", true);
-    }
+  // Mở app / quay lại app / có mạng lại: gửi nốt hàng đợi, và (nếu bật tự tải) tải bản mới nếu lần tải trước đã cũ.
+  function onAppResume(force){
+    if(!SHEET_SYNC_URL || !signedIn()) return;
+    if(force) retryAttempt = 0;
+    const last = getLastPullAt();
+    const due = force || !last || (Date.now() - last >= AUTO_PULL_MIN_GAP_MS);
+    if(getAutoPull() && due) pullMonth(currentMonthKey); // pullMonth tự gửi nốt hàng đợi trước
+    else if(syncQueue.length) processSyncQueue();
+    refreshSyncStatus();
   }
-  setInterval(checkStaleSync, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible") onAppResume(false);
+  });
+  window.addEventListener("online", () => onAppResume(true));
+
+  // ---------- Danh sách thay đổi bị Sheet từ chối ----------
+  const rejectedOverlay = document.getElementById("rejectedOverlay");
+  const rejectedList = document.getElementById("rejectedList");
+  const rejectedActions = document.getElementById("rejectedActions");
+  const ACTION_LABEL = {
+    addEntry: "Thêm khoản chi", updateEntry: "Sửa khoản chi", deleteEntry: "Xoá khoản chi",
+    deleteMonth: "Xoá cả tháng", syncMonth: "Nhập dữ liệu cả tháng"
+  };
+  function describeItem(it){
+    let what = monthLabel(it.monthKey);
+    if(it.entry && it.entry.name) what = it.entry.name + " · " + what;
+    return (ACTION_LABEL[it.action] || it.action) + " — " + what;
+  }
+  function renderRejected(){
+    if(!rejectedItems.length){
+      rejectedList.innerHTML = '<p class="devices-empty">Không còn thay đổi nào bị từ chối.</p>';
+      rejectedActions.style.display = "none";
+      return;
+    }
+    rejectedActions.style.display = "";
+    rejectedList.innerHTML = rejectedItems.map((r) =>
+      '<div class="device-row">' +
+        '<div class="device-info">' +
+          '<div class="device-name">' + escapeHtml(describeItem(r.item)) + "</div>" +
+          '<div class="device-meta">Lý do: ' + escapeHtml(r.error) + "</div>" +
+        "</div>" +
+        '<div class="rejected-btns">' +
+          '<button type="button" class="mini-btn" data-rj-retry="' + r.item.seq + '">Thử lại</button>' +
+          '<button type="button" class="mini-btn danger" data-rj-drop="' + r.item.seq + '">Bỏ</button>' +
+        "</div>" +
+      "</div>"
+    ).join("");
+  }
+  function openRejectedModal(){
+    renderRejected();
+    rejectedOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeRejectedModal(){
+    rejectedOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+  function retryRejected(which){
+    const take = rejectedItems.filter(r => which === "all" || r.item.seq === which);
+    if(!take.length) return;
+    rejectedItems = rejectedItems.filter(r => !take.includes(r));
+    take.forEach(r => { r.item.attempts = 0; syncQueue.push(r.item); });
+    syncQueue.sort((a, b) => (a.seq || 0) - (b.seq || 0)); // giữ đúng thứ tự thực hiện ban đầu
+    saveQueue();
+    saveRejected();
+    lastSyncError = null;
+    retryAttempt = 0;
+    renderRejected();
+    refreshSyncStatus();
+    processSyncQueue().then(() => { renderRejected(); refreshSyncStatus(); });
+  }
+  function dropRejected(which){
+    const before = rejectedItems.length;
+    rejectedItems = rejectedItems.filter(r => !(which === "all" || r.item.seq === which));
+    if(rejectedItems.length === before) return;
+    saveRejected();
+    renderRejected();
+    refreshSyncStatus();
+    // Đưa màn hình về đúng dữ liệu đang có trên Sheet (khoản đã bỏ sẽ biến mất / khoản định xoá sẽ hiện lại).
+    pullMonth(currentMonthKey).then(() => { renderRejected(); });
+  }
+  rejectedList.addEventListener("click", (e) => {
+    const retryBtn = e.target.closest("[data-rj-retry]");
+    const dropBtn = e.target.closest("[data-rj-drop]");
+    if(retryBtn) retryRejected(Number(retryBtn.dataset.rjRetry));
+    else if(dropBtn) dropRejected(Number(dropBtn.dataset.rjDrop));
+  });
+  document.getElementById("rejectedRetryAll").addEventListener("click", () => retryRejected("all"));
+  document.getElementById("rejectedDropAll").addEventListener("click", () => dropRejected("all"));
+  document.getElementById("rejectedClose").addEventListener("click", closeRejectedModal);
+  rejectedOverlay.addEventListener("click", (e) => { if(e.target === rejectedOverlay) closeRejectedModal(); });
+  document.getElementById("syncStatus").addEventListener("click", () => {
+    if(rejectedItems.length) openRejectedModal();
+  });
+
 
   // ---------- Month switching ----------
   function renderMonthUI(){
@@ -842,33 +1136,19 @@
     }).join("");
   }
 
-  // Đẩy toàn bộ dữ liệu 1 hoặc nhiều tháng lên Sheet (ghi đè) — dùng khi khôi phục từ file backup JSON.
+  // Đẩy toàn bộ dữ liệu 1 hoặc nhiều tháng lên Sheet (ghi đè) — dùng khi khôi phục từ file backup.
+  // Đi qua hàng đợi chung nên đúng thứ tự, mất mạng sẽ tự thử lại; trả về tháng nào đã lên, tháng nào chưa.
   async function pushFullMonths(monthsObj){
+    const items = Object.keys(monthsObj).map(k => queueSyncMonth(k, monthsObj[k] || []));
+    await processSyncQueue();
     const succeeded = [];
     const failed = [];
-    for(const monthKey of Object.keys(monthsObj)){
-      try{
-        const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
-        const res = await fetch(SHEET_SYNC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json().catch(() => null);
-        if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
-        noteSessionExp(data);
-        if(!res.ok || !data || data.ok !== true){
-          throw new Error((data && data.error) || ("HTTP " + res.status));
-        }
-        succeeded.push(monthKey);
-      }catch(err){
-        failed.push({ monthKey, error: err.message });
-        showErrorBanner("Đẩy dữ liệu khôi phục lên Sheet thất bại (tháng " + monthKey + "): " + err.message);
-      }
-    }
-    markSynced();
-    const now = new Date();
-    setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
+    items.forEach(it => {
+      const rejected = rejectedItems.find(r => r.item === it);
+      if(rejected) failed.push({ monthKey: it.monthKey, error: rejected.error });
+      else if(syncQueue.includes(it)) failed.push({ monthKey: it.monthKey, error: (lastSyncError && lastSyncError.message) || "chưa gửi được" });
+      else succeeded.push(it.monthKey);
+    });
     return { succeeded, failed };
   }
 
@@ -2172,7 +2452,7 @@
           "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng" +
           (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "") +
           (result.failed.length > 0
-            ? ' · <span style="color:#e0455a">lỗi đẩy Sheet cho ' + result.failed.length + ' tháng</span>'
+            ? ' · <span style="color:#e0455a">chưa gửi lên Sheet được ' + result.failed.length + ' tháng (xem dòng trạng thái, app sẽ tự thử lại)</span>'
             : " · đã đồng bộ Sheet xong");
         showVoiceToast(result.failed.length > 0, summary);
       });
@@ -2235,22 +2515,21 @@
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {
     closeMenuPanel();
-    openConfirm(
-      "Đồng bộ ngay?",
-      "Tải lại dữ liệu mới nhất từ Google Sheet cho tháng đang xem — nếu có thay đổi chưa lưu xong ở máy này, bản trên Sheet sẽ được ưu tiên hiển thị.",
-      "Đồng bộ",
-      false,
-      () => pullMonth(currentMonthKey, { manual: true })
-    );
+    // Gửi nốt thay đổi còn chờ rồi tải bản mới nhất của tháng đang xem. Thay đổi chưa lên Sheet luôn được giữ lại
+    // trên màn hình, nên không cần hộp xác nhận nữa.
+    retryAttempt = 0;
+    pullMonth(currentMonthKey, { manual: true });
   });
 
   document.getElementById("autoPullToggle").addEventListener("click", () => {
     const next = !getAutoPull();
     setAutoPull(next);
     setSyncStatus(
-      next ? "Đã BẬT tự động tải khi mở app/chuyển tháng" : "\"Đồng bộ tự động\" đã TẮT",
+      next ? "Đã BẬT tự động tải bản mới khi mở/quay lại app" : "Đã TẮT tự động tải bản mới",
       false
     );
+    setTimeout(refreshSyncStatus, 3000);
+    if(next && SHEET_SYNC_URL) pullMonth(currentMonthKey);
   });
 
   document.getElementById("themeToggle").addEventListener("click", () => {
@@ -2365,45 +2644,24 @@
         (SHEET_SYNC_URL ? " (cả trên Google Sheet)" : "") + ". Không thể hoàn tác.",
       "Xoá tháng",
       true,
-      async () => {
-        try{
-          delete monthsData[key];
-          if(key === currentMonthKey){
-            const remainingKeys = Object.keys(monthsData).sort().reverse();
-            if(remainingKeys.length){
-              currentMonthKey = remainingKeys[0];
-            }else{
-              currentMonthKey = key;
-              monthsData[key] = [];
-            }
-            entries = monthsData[currentMonthKey];
+      () => {
+        delete monthsData[key];
+        if(key === currentMonthKey){
+          const remainingKeys = Object.keys(monthsData).sort().reverse();
+          if(remainingKeys.length){
+            currentMonthKey = remainingKeys[0];
+          }else{
+            currentMonthKey = key;
+            monthsData[key] = [];
           }
-          saveCache();
-          renderMonthUI();
-          render();
-          closeMonthPanel();
-          if(SHEET_SYNC_URL){
-            setSyncStatus("Đang xoá tháng trên Google Sheet…", false);
-            const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "deleteMonth", monthKey: key };
-            const res = await fetch(SHEET_SYNC_URL, {
-              method: "POST",
-              headers: { "Content-Type": "text/plain;charset=utf-8" },
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json().catch(() => null);
-            if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
-            noteSessionExp(data);
-            if(!res.ok || !data || data.ok !== true){
-              throw new Error((data && data.error) || ("HTTP " + res.status));
-            }
-            markSynced();
-            const now = new Date();
-            setSyncStatus("Đã đồng bộ lúc " + now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }), false);
-          }
-        }catch(err){
-          setSyncStatus("Đồng bộ thất bại", true);
-          showErrorBanner("Xoá tháng trên Sheet thất bại: " + err.message);
+          entries = monthsData[currentMonthKey];
         }
+        saveCache();
+        renderMonthUI();
+        render();
+        closeMonthPanel();
+        // Lệnh xoá đi qua hàng đợi chung: bỏ các thay đổi chưa gửi của tháng này, gửi đúng thứ tự, mất mạng thì tự thử lại.
+        queueDeleteMonth(key);
       }
     );
   }
@@ -2622,13 +2880,14 @@
   }catch(err){ showErrorBanner("khởi tạo: " + err.message); }
 
   // ---------- Đăng nhập Google + phiên "ghi nhớ thiết bị" ----------
-  // Luồng: đăng nhập Google ĐÚNG 1 LẦN -> server (Code.gs) đổi lấy 1 "phiên" riêng (token ngẫu nhiên, 90 ngày,
+  // Luồng: đăng nhập Google ĐÚNG 1 LẦN -> server (Code.gs) đổi lấy 1 "phiên" riêng (token ngẫu nhiên, 15 ngày,
   // tự gia hạn khi dùng). Các lần mở app sau chỉ cần phiên này, KHÔNG đụng tới Google nữa -> mở app nhanh,
   // dùng được cả khi offline. Mỗi phiên = 1 thiết bị, có thể xem/thu hồi trong menu "Thiết bị đăng nhập".
   let sessionToken = null;   // gửi kèm mọi request lên Code.gs
   let sessionRecord = null;  // { token, email, exp, deviceId, remember }
   let googleUserEmail = null;
   const SESSION_KEY = "so_chi_tieu:session:v2";
+  const SESSION_REMEMBER_DAYS = 15; // phải KHỚP SESSION_TTL_DAYS trong Code.gs và chữ "(15 ngày)" trên ô Ghi nhớ trong index.html
   const REMEMBER_PREF_KEY = "so_chi_tieu:remember_pref";
   const OLD_AUTH_KEY = "so_chi_tieu:auth:v1"; // khoá phiên kiểu cũ (idToken 1 giờ) — dọn đi
 
@@ -2904,13 +3163,13 @@
     try{
       if(!SHEET_SYNC_URL){
         // Chưa bật đồng bộ Google Sheet: chỉ khoá giao diện trên máy này (không có phiên phía server).
-        startSession({ token: "", email: payload.email, exp: Date.now() + (remember ? 90 : 1) * 864e5, deviceId: "", remember });
+        startSession({ token: "", email: payload.email, exp: Date.now() + (remember ? SESSION_REMEMBER_DAYS : 1) * 864e5, deviceId: "", remember });
         return;
       }
       const data = await postLogin(idToken, remember);
       startSession({
         token: data.sessionToken, email: data.email || payload.email,
-        exp: Number(data.sessionExp) || (Date.now() + (remember ? 90 : 1) * 864e5),
+        exp: Number(data.sessionExp) || (Date.now() + (remember ? SESSION_REMEMBER_DAYS : 1) * 864e5),
         deviceId: data.deviceId || "", remember
       });
     }catch(err){
@@ -2980,7 +3239,7 @@
     logoutWipeBtn.textContent = WIPE_LABEL;
     logoutKeepBtn.disabled = false;
     logoutWipeBtn.disabled = false;
-    const n = syncQueue.length;
+    const n = pendingChangeCount();
     if(n){
       logoutNote.textContent = "Đang còn " + n + " thay đổi chưa gửi lên Google Sheet. Nếu chọn giữ dữ liệu, chúng vẫn nằm trên máy và sẽ được gửi sau khi bạn đăng nhập lại.";
       logoutNote.style.display = "";
@@ -3005,9 +3264,9 @@
         await processSyncQueue();
         if(!sessionRecord){ closeAuthModals(); resumeParticleBg(); done = true; return; } // phiên hết hạn giữa chừng
       }
-      if(wipe && syncQueue.length && !logoutWipeArmed){
+      if(wipe && pendingChangeCount() > 0 && !logoutWipeArmed){
         logoutWipeArmed = true;
-        const n = syncQueue.length;
+        const n = pendingChangeCount();
         logoutNote.textContent = "Còn " + n + " thay đổi KHÔNG gửi được lên Google Sheet (có thể đang mất mạng). Xoá bây giờ sẽ MẤT chúng. Bấm nút đỏ lần nữa nếu vẫn muốn xoá, hoặc chọn \"giữ dữ liệu\".";
         logoutNote.style.display = "";
         logoutWipeBtn.textContent = "Vẫn xoá (mất " + n + " thay đổi)";
@@ -3026,7 +3285,7 @@
       done = true;
       closeLogoutModal();
       if(wipe){
-        [CACHE_KEY, QUEUE_KEY, LAST_SYNC_KEY].forEach((k) => { try{ localStorage.removeItem(k); }catch(err){} });
+        [CACHE_KEY, QUEUE_KEY, LAST_SYNC_KEY, REJECTED_KEY, LAST_PULL_KEY].forEach((k) => { try{ localStorage.removeItem(k); }catch(err){} });
         clearSessionLocal();
         location.reload(); // nạp lại cho sạch trạng thái trong bộ nhớ
         return;

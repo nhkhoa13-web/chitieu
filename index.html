@@ -108,7 +108,7 @@
       <p id="authGateMsg">Đăng nhập bằng Google để tiếp tục — chỉ tài khoản đã được cấp quyền mới xem/sửa được dữ liệu.</p>
       <label class="auth-remember" for="authRemember">
         <input type="checkbox" id="authRemember" />
-        <span>Ghi nhớ trên thiết bị này (90 ngày)</span>
+        <span>Ghi nhớ trên thiết bị này (15 ngày)</span>
       </label>
       <div id="googleSignInBtn" class="google-signin-slot"></div>
       <p class="auth-gate-status" id="authGateStatus" style="display:none;" role="status"></p>
@@ -163,8 +163,8 @@
         </div>
         <div class="header-actions">
         <button type="button" id="autoPullToggle" class="auto-pull-toggle" aria-pressed="false"
-          aria-label="Bật/tắt tự động tải khi mở app hoặc chuyển tháng"
-          title="Bật/tắt tự động tải khi mở app hoặc chuyển tháng">
+          aria-label="Bật/tắt tự động tải bản mới từ Google Sheet"
+          title="Bật/tắt tự động tải bản mới từ Google Sheet">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m13 2-9 12h9l-1 8 9-12h-9l1-8Z"/></svg>
         </button>
         <div class="menu-switcher">
@@ -543,6 +543,24 @@
       <p class="devices-hint">Mất điện thoại hoặc không nhận ra thiết bị nào đó? Bấm <b>Thu hồi</b> — thiết bị đó sẽ bị đăng xuất ngay ở lần kết nối kế tiếp.</p>
       <div class="modal-actions">
         <button type="button" class="btn-ghost danger-ghost" id="devicesRevokeOthers" style="display:none;">Đăng xuất các thiết bị khác</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="rejectedOverlay">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head">
+        <h3 class="modal-title">Thay đổi bị Sheet từ chối</h3>
+        <button type="button" class="icon-btn" id="rejectedClose" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="devices-hint">Các thay đổi này vẫn hiện trên máy bạn nhưng chưa lên được Google Sheet. Các thay đổi khác không bị ảnh hưởng.</p>
+      <div class="devices-list" id="rejectedList"></div>
+      <p class="devices-hint"><b>Thử lại</b>: gửi lại lên Sheet. <b>Bỏ</b>: không gửi nữa — màn hình trở về đúng dữ liệu đang có trên Sheet.</p>
+      <div class="modal-actions" id="rejectedActions">
+        <button type="button" class="btn-ghost" id="rejectedRetryAll">Thử lại tất cả</button>
+        <button type="button" class="btn-ghost danger-ghost" id="rejectedDropAll">Bỏ tất cả</button>
       </div>
     </div>
   </div>

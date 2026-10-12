@@ -1040,3 +1040,13 @@
   .devices-empty{ margin:8px 0; font-size:12.5px; color:var(--text-faint); line-height:1.5; }
   .btn-ghost.danger-ghost{ color:#ff6b81; border-color:rgba(255,59,92,0.5); }
   .btn-ghost.danger-ghost.armed{ background:#FF3B5C; color:#fff; border-color:#FF3B5C; }
+
+  /* ============ Đồng bộ: dòng trạng thái bấm được + danh sách bị từ chối ============ */
+  .sync-status.clickable{ cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .rejected-btns{ display:flex; gap:6px; flex-shrink:0; }
+  .mini-btn{
+    background:transparent; color:var(--chong-soft); border:1px solid rgba(var(--chong-rgb),0.5); border-radius:9px;
+    padding:7px 11px; font-size:12px; font-weight:700; cursor:pointer;
+  }
+  .mini-btn.danger{ color:#ff6b81; border-color:rgba(255,59,92,0.5); }
+  .mini-btn:disabled{ opacity:0.5; cursor:not-allowed; }
