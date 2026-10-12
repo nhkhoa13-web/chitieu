@@ -999,3 +999,44 @@
     .sp-ring{ display:none; }
     #splash.out{ animation:spFade .3s forwards !important; }
   }
+
+  /* ============ Đăng nhập ghi nhớ thiết bị + quản lý thiết bị ============ */
+  .auth-remember{
+    display:flex; align-items:center; justify-content:center; gap:9px; margin:0 0 16px; cursor:pointer;
+    font-size:12.5px; color:var(--text-mid); user-select:none;
+  }
+  .auth-remember input{ width:17px; height:17px; accent-color:var(--chong); cursor:pointer; flex-shrink:0; }
+  .auth-gate-status{ margin:14px 0 0 !important; font-size:12.5px; color:var(--chong-soft) !important; }
+  .auth-retry{ margin:14px auto 0; justify-content:center; }
+
+  .logout-note{
+    margin:0 0 12px; font-size:12px; line-height:1.5; color:#ffb4bd; background:rgba(224,69,90,0.12);
+    border:1px solid rgba(224,69,90,0.35); border-radius:9px; padding:9px 11px;
+  }
+  .logout-actions{ display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+  .logout-actions button{ width:100%; justify-content:center; text-align:center; }
+  .logout-actions .btn-primary{ text-transform:none; letter-spacing:0; font-size:13px; }
+
+  .devices-list{ display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow-y:auto; margin:4px 0 12px; }
+  .device-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 12px;
+    background:var(--surface3, rgba(255,255,255,0.04)); border:1px solid var(--border); border-radius:11px;
+  }
+  .device-row.current{ border-color:rgba(var(--chong-rgb),0.55); }
+  .device-info{ min-width:0; flex:1; }
+  .device-name{ font-size:13.5px; font-weight:600; color:var(--text-hi); word-break:break-word; }
+  .device-badge{
+    display:inline-block; margin-left:6px; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:700;
+    color:var(--chong-soft); background:rgba(var(--chong-rgb),0.16); vertical-align:middle;
+  }
+  .device-meta{ margin-top:3px; font-size:11.5px; color:var(--text-faint); line-height:1.45; }
+  .device-revoke{
+    flex-shrink:0; background:transparent; color:#ff6b81; border:1px solid rgba(255,59,92,0.5); border-radius:9px;
+    padding:7px 11px; font-size:12px; font-weight:700;
+  }
+  .device-revoke.armed{ background:#FF3B5C; color:#fff; border-color:#FF3B5C; }
+  .device-revoke:disabled{ opacity:0.5; cursor:not-allowed; }
+  .devices-hint{ margin:0 0 12px; font-size:12px; line-height:1.5; color:var(--text-faint); }
+  .devices-empty{ margin:8px 0; font-size:12.5px; color:var(--text-faint); line-height:1.5; }
+  .btn-ghost.danger-ghost{ color:#ff6b81; border-color:rgba(255,59,92,0.5); }
+  .btn-ghost.danger-ghost.armed{ background:#FF3B5C; color:#fff; border-color:#FF3B5C; }

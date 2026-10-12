@@ -158,8 +158,62 @@
     s = s.replace(/,/g, "."); // lỡ gõ dấu phẩy làm dấu thập phân
     if(!/^[0-9+\-*/().\s]+$/.test(s)) return NaN; // có ký tự lạ -> không tính, coi như không hợp lệ
     if(!/[0-9]/.test(s)) return NaN; // chỉ toàn dấu toán tử, không có số nào
+    if(/\*\*|\/\/|\/\*|\+\+|--/.test(s)) return NaN; // các cụm toán tử không có nghĩa trong phép tính tiền
+    // Bộ phân tích cú pháp tự viết (đệ quy xuống) — KHÔNG dùng eval/Function nên chạy được với
+    // Content-Security-Policy chặn 'unsafe-eval'. Hỗ trợ: số, + - * /, ngoặc, dấu +/- đứng trước.
+    const tokens = [];
+    const re = /\s*(\d+\.?\d*|\.\d+|[()+\-*/])/y;
+    let pos = 0;
+    while(pos < s.length){
+      re.lastIndex = pos;
+      const m = re.exec(s);
+      if(!m){ if(/^\s*$/.test(s.slice(pos))) break; return NaN; }
+      tokens.push(m[1]);
+      pos = re.lastIndex;
+    }
+    let i = 0;
+    const fail = () => { throw new Error("bad expr"); };
+    function primary(){
+      const t = tokens[i++];
+      if(t === undefined) fail();
+      if(t === "("){
+        const v = expr();
+        if(tokens[i++] !== ")") fail();
+        return v;
+      }
+      if(/^[0-9.]/.test(t)){
+        const n = parseFloat(t);
+        if(isNaN(n)) fail();
+        return n;
+      }
+      return fail();
+    }
+    function unary(){
+      if(tokens[i] === "-"){ i++; return -unary(); }
+      if(tokens[i] === "+"){ i++; return unary(); }
+      return primary();
+    }
+    function term(){
+      let v = unary();
+      while(tokens[i] === "*" || tokens[i] === "/"){
+        const op = tokens[i++];
+        const r = unary();
+        v = (op === "*") ? v * r : v / r;
+      }
+      return v;
+    }
+    function expr(){
+      let v = term();
+      while(tokens[i] === "+" || tokens[i] === "-"){
+        const op = tokens[i++];
+        const r = term();
+        v = (op === "+") ? v + r : v - r;
+      }
+      return v;
+    }
     try{
-      const result = Function('"use strict"; return (' + s + ')')();
+      const result = expr();
+      if(i !== tokens.length) return NaN; // còn token thừa (vd. "10 20", "2(3)")
       if(typeof result !== "number" || !isFinite(result)) return NaN;
       return Math.round(result * 100) / 100; // làm tròn 2 chữ số thập phân cho gọn
     }catch(err){
@@ -290,6 +344,10 @@
       if(parsed && parsed.months && typeof parsed.months === "object"){
         monthsData = parsed.months;
         if(parsed.current && monthsData[parsed.current]) currentMonthKey = parsed.current;
+        if(!Array.isArray(monthsData[currentMonthKey])) monthsData[currentMonthKey] = [];
+        // BẮT BUỘC gán lại "entries": nếu thiếu, sổ vẫn hiển thị mảng mặc định (trống) dù cache có dữ liệu,
+        // và lần thêm khoản chi kế tiếp (commit) sẽ ghi mảng trống đó đè lên dữ liệu đã lưu của tháng.
+        entries = monthsData[currentMonthKey];
         return true;
       }
     }catch(e){ /* cache hỏng — bỏ qua, dùng dữ liệu mặc định */ }
@@ -372,7 +430,7 @@
       try{
         const payload = {
           token: SHEET_SYNC_TOKEN,
-          idToken: googleIdToken,
+          sessionToken: sessionToken,
           action: item.action,
           monthKey: item.monthKey,
           entry: item.entry
@@ -384,6 +442,7 @@
         });
         const data = await res.json().catch(() => null);
         if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
+        noteSessionExp(data);
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
@@ -414,7 +473,7 @@
     }
     setSyncStatus("Đang đồng bộ…", false);
     try{
-      const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "fetchMonth", monthKey };
+      const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "fetchMonth", monthKey };
       const res = await fetch(SHEET_SYNC_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -422,6 +481,7 @@
       });
       const data = await res.json().catch(() => null);
       if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
+      noteSessionExp(data);
       if(!res.ok || !data || data.ok !== true){
         throw new Error((data && data.error) || ("HTTP " + res.status));
       }
@@ -788,7 +848,7 @@
     const failed = [];
     for(const monthKey of Object.keys(monthsObj)){
       try{
-        const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
+        const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "syncMonth", monthKey, entries: monthsObj[monthKey] || [] };
         const res = await fetch(SHEET_SYNC_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -796,6 +856,7 @@
         });
         const data = await res.json().catch(() => null);
         if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
+        noteSessionExp(data);
         if(!res.ok || !data || data.ok !== true){
           throw new Error((data && data.error) || ("HTTP " + res.status));
         }
@@ -2323,7 +2384,7 @@
           closeMonthPanel();
           if(SHEET_SYNC_URL){
             setSyncStatus("Đang xoá tháng trên Google Sheet…", false);
-            const payload = { token: SHEET_SYNC_TOKEN, idToken: googleIdToken, action: "deleteMonth", monthKey: key };
+            const payload = { token: SHEET_SYNC_TOKEN, sessionToken: sessionToken, action: "deleteMonth", monthKey: key };
             const res = await fetch(SHEET_SYNC_URL, {
               method: "POST",
               headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -2331,6 +2392,7 @@
             });
             const data = await res.json().catch(() => null);
             if(handleSyncAuthError(data)) throw new Error((data && data.error) || "Chưa đăng nhập hoặc hết quyền");
+            noteSessionExp(data);
             if(!res.ok || !data || data.ok !== true){
               throw new Error((data && data.error) || ("HTTP " + res.status));
             }
@@ -2551,21 +2613,110 @@
   });
   document.getElementById("signOutBtn").addEventListener("click", () => {
     closeMenuPanel();
-    openConfirm(
-      "Đăng xuất?",
-      "Bạn sẽ cần đăng nhập lại bằng Google để xem/sửa dữ liệu ở lần mở app kế tiếp trên máy này.",
-      "Đăng xuất",
-      true,
-      () => signOut()
-    );
+    openLogoutModal();
+  });
+  document.getElementById("devicesBtn").addEventListener("click", () => {
+    closeMenuPanel();
+    openDevicesModal();
   });
   }catch(err){ showErrorBanner("khởi tạo: " + err.message); }
 
-  // ---------- Đăng nhập Google ----------
-  let googleIdToken = null;
+  // ---------- Đăng nhập Google + phiên "ghi nhớ thiết bị" ----------
+  // Luồng: đăng nhập Google ĐÚNG 1 LẦN -> server (Code.gs) đổi lấy 1 "phiên" riêng (token ngẫu nhiên, 90 ngày,
+  // tự gia hạn khi dùng). Các lần mở app sau chỉ cần phiên này, KHÔNG đụng tới Google nữa -> mở app nhanh,
+  // dùng được cả khi offline. Mỗi phiên = 1 thiết bị, có thể xem/thu hồi trong menu "Thiết bị đăng nhập".
+  let sessionToken = null;   // gửi kèm mọi request lên Code.gs
+  let sessionRecord = null;  // { token, email, exp, deviceId, remember }
   let googleUserEmail = null;
-  const AUTH_CACHE_KEY = "so_chi_tieu:auth:v1";
+  const SESSION_KEY = "so_chi_tieu:session:v2";
+  const REMEMBER_PREF_KEY = "so_chi_tieu:remember_pref";
+  const OLD_AUTH_KEY = "so_chi_tieu:auth:v1"; // khoá phiên kiểu cũ (idToken 1 giờ) — dọn đi
 
+  const pad2 = (n) => String(n).padStart(2, "0");
+  function isStandaloneApp(){
+    try{
+      return (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches))
+        || navigator.standalone === true;
+    }catch(err){ return false; }
+  }
+  // Mở từ icon màn hình chính -> mặc định GHI NHỚ; mở trên trình duyệt thường -> mặc định KHÔNG (có thể là máy chung).
+  // Nếu người dùng đã tự chọn thì nhớ lựa chọn đó.
+  function defaultRemember(){
+    try{
+      const pref = localStorage.getItem(REMEMBER_PREF_KEY);
+      if(pref === "1") return true;
+      if(pref === "0") return false;
+    }catch(err){}
+    return isStandaloneApp();
+  }
+  function deviceLabel(){
+    const ua = navigator.userAgent || "";
+    let os = "Thiết bị";
+    if(/Android/i.test(ua)) os = "Android";
+    else if(/iPhone/i.test(ua)) os = "iPhone";
+    else if(/iPad/i.test(ua)) os = "iPad";
+    else if(/Windows/i.test(ua)) os = "Windows";
+    else if(/Mac OS X|Macintosh/i.test(ua)) os = "Mac";
+    else if(/CrOS/i.test(ua)) os = "Chromebook";
+    else if(/Linux/i.test(ua)) os = "Linux";
+    let br = "";
+    if(/Edg\//.test(ua)) br = "Edge";
+    else if(/OPR\/|Opera/.test(ua)) br = "Opera";
+    else if(/SamsungBrowser/i.test(ua)) br = "Samsung Internet";
+    else if(/Firefox|FxiOS/i.test(ua)) br = "Firefox";
+    else if(/Chrome|CriOS/i.test(ua)) br = "Chrome";
+    else if(/Safari/i.test(ua)) br = "Safari";
+    return os + (br ? " · " + br : "") + (isStandaloneApp() ? " (app)" : "");
+  }
+
+  // ----- Lưu/đọc phiên: "ghi nhớ" -> localStorage (sống qua các lần đóng app); không ghi nhớ -> sessionStorage -----
+  function storeSession(rec){
+    try{
+      const json = JSON.stringify(rec);
+      if(rec.remember){ localStorage.setItem(SESSION_KEY, json); sessionStorage.removeItem(SESSION_KEY); }
+      else{ sessionStorage.setItem(SESSION_KEY, json); localStorage.removeItem(SESSION_KEY); }
+    }catch(err){}
+  }
+  function removeStoredSession(){
+    try{ localStorage.removeItem(SESSION_KEY); }catch(err){}
+    try{ sessionStorage.removeItem(SESSION_KEY); }catch(err){}
+  }
+  function readStoredSession(){
+    const tryRead = (st) => {
+      try{
+        const raw = st.getItem(SESSION_KEY);
+        if(!raw) return null;
+        const d = JSON.parse(raw);
+        if(!d || typeof d.token !== "string" || !d.email || !d.exp || d.exp <= Date.now()) return null;
+        return d;
+      }catch(err){ return null; }
+    };
+    return tryRead(localStorage) || tryRead(sessionStorage);
+  }
+  function adoptSession(rec){
+    sessionRecord = rec;
+    sessionToken = rec.token;
+    googleUserEmail = rec.email;
+    updateAccountUi();
+  }
+  function clearSessionLocal(){
+    sessionRecord = null;
+    sessionToken = null;
+    googleUserEmail = null;
+    removeStoredSession();
+    updateAccountUi();
+  }
+  // Server gia hạn phiên khi dùng -> cập nhật hạn mới vào bản lưu trên máy.
+  function noteSessionExp(data){
+    if(!data || !sessionRecord) return;
+    const exp = Number(data.sessionExp);
+    if(exp && exp !== sessionRecord.exp){
+      sessionRecord.exp = exp;
+      storeSession(sessionRecord);
+    }
+  }
+
+  // ----- Giao diện cổng đăng nhập -----
   function authGateShow(msg, isError){
     document.getElementById("authGate").classList.add("show");
     const errEl = document.getElementById("authGateError");
@@ -2578,6 +2729,14 @@
   }
   function authGateHide(){
     document.getElementById("authGate").classList.remove("show");
+  }
+  function setAuthStatus(text){
+    const el = document.getElementById("authGateStatus");
+    if(text){ el.textContent = text; el.style.display = ""; }
+    else{ el.style.display = "none"; }
+  }
+  function setAuthRetry(visible){
+    document.getElementById("authRetryBtn").style.display = visible ? "" : "none";
   }
   function parseJwtPayload(token){
     try{
@@ -2597,86 +2756,428 @@
       avatarEl.textContent = "?";
     }
   }
-  function saveAuthSession(idToken, payload){
-    try{ sessionStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ idToken, email: payload.email, exp: (payload.exp || 0) * 1000 })); }catch(err){}
+  function initRememberCheckbox(){
+    const cb = document.getElementById("authRemember");
+    cb.checked = defaultRemember();
+    cb.addEventListener("change", () => {
+      try{ localStorage.setItem(REMEMBER_PREF_KEY, cb.checked ? "1" : "0"); }catch(err){}
+    });
   }
-  function clearAuthSession(){
-    try{ sessionStorage.removeItem(AUTH_CACHE_KEY); }catch(err){}
-  }
-  function loadAuthSession(){
-    try{
-      const raw = sessionStorage.getItem(AUTH_CACHE_KEY);
-      if(!raw) return null;
-      const data = JSON.parse(raw);
-      if(!data.idToken || !data.exp || data.exp <= Date.now()) return null;
-      return data;
-    }catch(err){ return null; }
-  }
-  function handleGoogleCredential(response){
-    const idToken = response.credential;
-    const payload = parseJwtPayload(idToken);
-    if(!payload || !payload.email){
-      authGateShow("Không đọc được thông tin tài khoản Google. Thử lại.", true);
-      return;
-    }
-    googleIdToken = idToken;
-    googleUserEmail = payload.email;
-    saveAuthSession(idToken, payload);
-    authGateHide();
-    updateAccountUi();
-    loadData();
-  }
-  function signOut(msg){
-    googleIdToken = null;
-    googleUserEmail = null;
-    clearAuthSession();
-    updateAccountUi();
-    if(window.google && google.accounts && google.accounts.id){
-      try{ google.accounts.id.disableAutoSelect(); }catch(err){}
-    }
-    authGateShow(msg || "", !!msg);
-    initGoogleSignInButton();
-  }
-  function handleSyncAuthError(data){
-    if(data && data.authError){
-      signOut("Phiên đăng nhập đã hết hạn hoặc không có quyền truy cập — vui lòng đăng nhập lại.");
-      return true;
-    }
-    return false;
+
+  // ----- Nạp script đăng nhập Google: có giới hạn thời gian + nút Thử lại (không còn treo vô hạn) -----
+  const GSI_URL = "https://accounts.google.com/gsi/client";
+  const GSI_TIMEOUT_MS = 12000;
+  let gsiPromise = null;
+  let gsiInitialized = false;
+  const gsiReady = () => !!(window.google && google.accounts && google.accounts.id);
+  function loadGsi(){
+    if(gsiReady()) return Promise.resolve();
+    if(gsiPromise) return gsiPromise;
+    gsiPromise = new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = GSI_URL;
+      el.async = true;
+      el.defer = true;
+      let settled = false;
+      const fail = (why) => {
+        if(settled) return;
+        settled = true;
+        clearTimeout(timer);
+        el.remove();
+        gsiPromise = null; // cho phép thử lại từ đầu
+        reject(new Error(why));
+      };
+      const timer = setTimeout(() => fail("timeout"), GSI_TIMEOUT_MS);
+      el.onload = () => {
+        if(settled) return;
+        if(!gsiReady()) return fail("init");
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      el.onerror = () => fail("load");
+      document.head.appendChild(el);
+    });
+    return gsiPromise;
   }
   function initGoogleSignInButton(){
-    if(!GOOGLE_CLIENT_ID || !window.google || !google.accounts || !google.accounts.id) return;
-    google.accounts.id.renderButton(document.getElementById("googleSignInBtn"), {
+    if(!GOOGLE_CLIENT_ID || !gsiReady()) return;
+    const slot = document.getElementById("googleSignInBtn");
+    slot.innerHTML = "";
+    google.accounts.id.renderButton(slot, {
       theme: "filled_black", size: "large", shape: "pill", text: "signin_with", width: 280
     });
   }
-  function initGoogleSignIn(){
-    if(!GOOGLE_CLIENT_ID){
-      // Chưa cấu hình đăng nhập Google -> bỏ qua, chạy app bình thường (tương thích ngược).
-      loadData();
+  async function startSignInFlow(){
+    setAuthRetry(false);
+    setAuthStatus("Đang tải đăng nhập Google…");
+    try{
+      await loadGsi();
+    }catch(err){
+      setAuthStatus("");
+      const offline = (navigator.onLine === false);
+      authGateShow(offline
+        ? "Không có kết nối mạng. Hãy bật mạng rồi bấm Thử lại."
+        : "Không tải được dịch vụ đăng nhập của Google (mạng chậm, bị chặn hoặc có trình chặn quảng cáo). Bấm Thử lại.", true);
+      setAuthRetry(true);
       return;
     }
-    const cached = loadAuthSession();
-    if(cached){
-      googleIdToken = cached.idToken;
-      googleUserEmail = cached.email;
-      updateAccountUi();
-      loadData();
-    }else{
-      authGateShow("", false);
-    }
-    (function trySetup(){
-      if(!window.google || !google.accounts || !google.accounts.id){ setTimeout(trySetup, 300); return; }
+    if(sessionRecord) { setAuthStatus(""); return; } // trong lúc chờ đã đăng nhập xong (vd. từ tab khác)
+    setAuthStatus("");
+    if(!gsiInitialized){
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleCredential,
         auto_select: true
       });
-      if(!cached){
-        initGoogleSignInButton();
-        google.accounts.id.prompt();
+      gsiInitialized = true;
+    }
+    initGoogleSignInButton();
+    try{ google.accounts.id.prompt(); }catch(err){}
+  }
+  document.getElementById("authRetryBtn").addEventListener("click", () => {
+    authGateShow("", false);
+    startSignInFlow();
+  });
+  // Có mạng lại trong lúc đang kẹt ở màn hình đăng nhập vì lỗi mạng -> tự thử lại.
+  window.addEventListener("online", () => {
+    const gate = document.getElementById("authGate");
+    const retryBtn = document.getElementById("authRetryBtn");
+    if(gate.classList.contains("show") && retryBtn.style.display !== "none" && !sessionRecord){
+      authGateShow("", false);
+      startSignInFlow();
+    }
+  });
+
+  // ----- Đăng nhập: đổi idToken của Google lấy phiên riêng -----
+  let loginInFlight = false;
+  async function postLogin(idToken, remember){
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 25000);
+    let res = null, data = null;
+    try{
+      res = await fetch(SHEET_SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: SHEET_SYNC_TOKEN, action: "login", idToken, deviceName: deviceLabel(), remember }),
+        signal: ctl.signal
+      });
+      data = await res.json().catch(() => null);
+    }catch(err){
+      const e = new Error("network");
+      e.userMessage = "Không kết nối được máy chủ để đăng nhập. Kiểm tra mạng rồi thử lại.";
+      throw e;
+    }finally{
+      clearTimeout(timer);
+    }
+    if(!data || data.ok !== true || !data.sessionToken){
+      const raw = (data && data.error) || ("HTTP " + (res && res.status));
+      const e = new Error(raw);
+      e.userMessage = /Không rõ action/.test(raw)
+        ? "Máy chủ chưa cập nhật Code.gs bản mới. Hãy dán Code.gs mới vào Apps Script rồi Deploy lại (New version)."
+        : (data && data.error) ? data.error : "Máy chủ trả về lỗi, hãy thử lại sau.";
+      throw e;
+    }
+    return data;
+  }
+  function startSession(rec){
+    adoptSession(rec);
+    storeSession(rec);
+    authGateHide();
+    setAuthStatus("");
+    setAuthRetry(false);
+    loadData();
+  }
+  async function handleGoogleCredential(response){
+    if(loginInFlight) return;
+    const idToken = response && response.credential;
+    const payload = idToken ? parseJwtPayload(idToken) : null;
+    if(!payload || !payload.email){
+      authGateShow("Không đọc được thông tin tài khoản Google. Thử lại.", true);
+      return;
+    }
+    const remember = !!document.getElementById("authRemember").checked;
+    try{ localStorage.setItem(REMEMBER_PREF_KEY, remember ? "1" : "0"); }catch(err){}
+    loginInFlight = true;
+    authGateShow("", false);
+    setAuthStatus("Đang đăng nhập…");
+    try{
+      if(!SHEET_SYNC_URL){
+        // Chưa bật đồng bộ Google Sheet: chỉ khoá giao diện trên máy này (không có phiên phía server).
+        startSession({ token: "", email: payload.email, exp: Date.now() + (remember ? 90 : 1) * 864e5, deviceId: "", remember });
+        return;
       }
-    })();
+      const data = await postLogin(idToken, remember);
+      startSession({
+        token: data.sessionToken, email: data.email || payload.email,
+        exp: Number(data.sessionExp) || (Date.now() + (remember ? 90 : 1) * 864e5),
+        deviceId: data.deviceId || "", remember
+      });
+    }catch(err){
+      authGateShow((err && err.userMessage) || ("Đăng nhập thất bại: " + (err && err.message)), true);
+      if(gsiReady()){ try{ google.accounts.id.disableAutoSelect(); }catch(e){} }
+    }finally{
+      loginInFlight = false;
+      if(!sessionRecord) setAuthStatus("");
+    }
+  }
+
+  // ----- Gọi Code.gs kèm phiên (dùng cho đăng xuất / quản lý thiết bị) -----
+  async function sheetCall(body, timeoutMs, opts){
+    opts = opts || {};
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs || 20000);
+    try{
+      const res = await fetch(SHEET_SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(Object.assign({ token: SHEET_SYNC_TOKEN, sessionToken: sessionToken }, body)),
+        signal: ctl.signal
+      });
+      const data = await res.json().catch(() => null);
+      if(data && data.authError){
+        if(!opts.silentAuth) handleSyncAuthError(data);
+        throw new Error(data.error || "Hết phiên đăng nhập");
+      }
+      noteSessionExp(data);
+      if(!res.ok || !data || data.ok !== true) throw new Error((data && data.error) || ("HTTP " + res.status));
+      return data;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  function closeAuthModals(){
+    ["logoutOverlay", "devicesOverlay"].forEach((id) => document.getElementById(id).classList.remove("show"));
+  }
+  // Thoát cục bộ (không gọi server): dùng khi server báo phiên hết hạn/bị thu hồi, hoặc sau khi đã báo server xong.
+  function signOutLocal(msg){
+    clearSessionLocal();
+    closeAuthModals();
+    if(gsiReady()){ try{ google.accounts.id.disableAutoSelect(); }catch(err){} }
+    authGateShow(msg || "", !!msg);
+    startSignInFlow();
+  }
+  function handleSyncAuthError(data){
+    if(data && data.authError){
+      signOutLocal((data.error && /thu hồi|hết hạn|không còn quyền/i.test(data.error))
+        ? data.error
+        : "Phiên đăng nhập đã hết hạn hoặc không có quyền truy cập — vui lòng đăng nhập lại.");
+      return true;
+    }
+    return false;
+  }
+
+  // ----- Đăng xuất: hỏi có xoá dữ liệu trên máy không -----
+  const logoutOverlay = document.getElementById("logoutOverlay");
+  const logoutNote = document.getElementById("logoutPendingNote");
+  const logoutKeepBtn = document.getElementById("logoutKeepBtn");
+  const logoutWipeBtn = document.getElementById("logoutWipeBtn");
+  const WIPE_LABEL = "Đăng xuất và xoá dữ liệu trên máy";
+  let logoutWipeArmed = false;
+  function openLogoutModal(){
+    logoutWipeArmed = false;
+    logoutWipeBtn.textContent = WIPE_LABEL;
+    logoutKeepBtn.disabled = false;
+    logoutWipeBtn.disabled = false;
+    const n = syncQueue.length;
+    if(n){
+      logoutNote.textContent = "Đang còn " + n + " thay đổi chưa gửi lên Google Sheet. Nếu chọn giữ dữ liệu, chúng vẫn nằm trên máy và sẽ được gửi sau khi bạn đăng nhập lại.";
+      logoutNote.style.display = "";
+    }else{
+      logoutNote.style.display = "none";
+    }
+    logoutOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeLogoutModal(){
+    logoutOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+  async function doLogout(wipe){
+    logoutKeepBtn.disabled = true;
+    logoutWipeBtn.disabled = true;
+    let done = false;
+    try{
+      // Muốn xoá dữ liệu: cố gửi nốt các thay đổi còn treo lên Sheet trước, để không mất khoản chi nào.
+      if(wipe && syncQueue.length && SHEET_SYNC_URL && sessionToken){
+        logoutWipeBtn.textContent = "Đang gửi nốt thay đổi…";
+        await processSyncQueue();
+        if(!sessionRecord){ closeAuthModals(); resumeParticleBg(); done = true; return; } // phiên hết hạn giữa chừng
+      }
+      if(wipe && syncQueue.length && !logoutWipeArmed){
+        logoutWipeArmed = true;
+        const n = syncQueue.length;
+        logoutNote.textContent = "Còn " + n + " thay đổi KHÔNG gửi được lên Google Sheet (có thể đang mất mạng). Xoá bây giờ sẽ MẤT chúng. Bấm nút đỏ lần nữa nếu vẫn muốn xoá, hoặc chọn \"giữ dữ liệu\".";
+        logoutNote.style.display = "";
+        logoutWipeBtn.textContent = "Vẫn xoá (mất " + n + " thay đổi)";
+        return;
+      }
+      // Báo server thu hồi phiên này (cố gắng tối đa 4 giây; mất mạng thì vẫn thoát được trên máy này —
+      // phiên còn lại trên server có thể thu hồi từ thiết bị khác ở mục "Thiết bị đăng nhập").
+      if(SHEET_SYNC_URL && sessionToken){
+        try{
+          await Promise.race([
+            sheetCall({ action: "logout" }, 4000, { silentAuth: true }).catch(() => null),
+            new Promise((resolve) => setTimeout(resolve, 4000))
+          ]);
+        }catch(err){}
+      }
+      done = true;
+      closeLogoutModal();
+      if(wipe){
+        [CACHE_KEY, QUEUE_KEY, LAST_SYNC_KEY].forEach((k) => { try{ localStorage.removeItem(k); }catch(err){} });
+        clearSessionLocal();
+        location.reload(); // nạp lại cho sạch trạng thái trong bộ nhớ
+        return;
+      }
+      signOutLocal("");
+    }finally{
+      if(!done){
+        logoutKeepBtn.disabled = false;
+        logoutWipeBtn.disabled = false;
+        if(!logoutWipeArmed) logoutWipeBtn.textContent = WIPE_LABEL;
+      }
+    }
+  }
+  logoutKeepBtn.addEventListener("click", () => doLogout(false));
+  logoutWipeBtn.addEventListener("click", () => doLogout(true));
+  document.getElementById("logoutCancelBtn").addEventListener("click", closeLogoutModal);
+  logoutOverlay.addEventListener("click", (e) => { if(e.target === logoutOverlay) closeLogoutModal(); });
+
+  // ----- Quản lý thiết bị đã đăng nhập -----
+  const devicesOverlay = document.getElementById("devicesOverlay");
+  const devicesList = document.getElementById("devicesList");
+  const devicesRevokeOthersBtn = document.getElementById("devicesRevokeOthers");
+  function relTime(ms){
+    const d = Date.now() - Number(ms || 0);
+    if(d < 60e3) return "vừa xong";
+    if(d < 3600e3) return Math.floor(d / 60e3) + " phút trước";
+    if(d < 864e5) return Math.floor(d / 3600e3) + " giờ trước";
+    return Math.floor(d / 864e5) + " ngày trước";
+  }
+  function fmtDate(ms){
+    const dt = new Date(Number(ms || 0));
+    return pad2(dt.getDate()) + "/" + pad2(dt.getMonth() + 1) + "/" + dt.getFullYear();
+  }
+  function devicesMessage(text){
+    devicesList.innerHTML = '<p class="devices-empty">' + escapeHtml(text) + "</p>";
+    devicesRevokeOthersBtn.style.display = "none";
+  }
+  function renderDevices(list){
+    if(!list.length){ devicesMessage("Chưa có thiết bị nào."); return; }
+    devicesList.innerHTML = list.map((d) =>
+      '<div class="device-row' + (d.current ? " current" : "") + '">' +
+        '<div class="device-info">' +
+          '<div class="device-name">' + escapeHtml(d.name) + (d.current ? ' <span class="device-badge">Thiết bị này</span>' : "") + "</div>" +
+          '<div class="device-meta">Dùng gần nhất: ' + relTime(d.lastSeen) + " · Hết hạn: " + fmtDate(d.expiresAt) + (d.remember ? "" : " · phiên ngắn") + "</div>" +
+        "</div>" +
+        (d.current ? "" : '<button type="button" class="device-revoke" data-revoke="' + escapeHtml(d.id) + '">Thu hồi</button>') +
+      "</div>"
+    ).join("");
+    devicesRevokeOthersBtn.style.display = list.length > 1 ? "" : "none";
+    devicesRevokeOthersBtn.classList.remove("armed");
+    devicesRevokeOthersBtn.textContent = "Đăng xuất các thiết bị khác";
+  }
+  async function loadDevices(){
+    if(!SHEET_SYNC_URL || !sessionToken){
+      devicesMessage("Quản lý thiết bị chỉ dùng được khi đã bật đồng bộ Google Sheet và đăng nhập.");
+      return;
+    }
+    devicesMessage("Đang tải danh sách…");
+    try{
+      const data = await sheetCall({ action: "listDevices" });
+      renderDevices(data.devices || []);
+    }catch(err){
+      if(sessionRecord) devicesMessage("Không tải được danh sách thiết bị: " + err.message);
+    }
+  }
+  function openDevicesModal(){
+    devicesOverlay.classList.add("show");
+    pauseParticleBg();
+    loadDevices();
+  }
+  function closeDevicesModal(){
+    devicesOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+  // Bấm 2 lần để xác nhận (lần 1 đổi nhãn "Chắc chắn?", tự hoàn lại sau 3,5 giây) — tránh thu hồi nhầm mà không cần hộp thoại lồng nhau.
+  function armTwoStep(btn, armedText, run){
+    if(btn.classList.contains("armed")){
+      clearTimeout(btn._armTimer);
+      run();
+      return;
+    }
+    const original = btn.textContent;
+    btn.classList.add("armed");
+    btn.textContent = armedText;
+    btn._armTimer = setTimeout(() => { btn.classList.remove("armed"); btn.textContent = original; }, 3500);
+  }
+  devicesList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".device-revoke");
+    if(!btn) return;
+    armTwoStep(btn, "Chắc chắn?", async () => {
+      btn.disabled = true;
+      try{
+        await sheetCall({ action: "revokeDevice", deviceId: btn.dataset.revoke });
+        await loadDevices();
+      }catch(err){
+        btn.disabled = false;
+        btn.classList.remove("armed");
+        btn.textContent = "Thu hồi";
+        if(sessionRecord) alert("Không thu hồi được: " + err.message);
+      }
+    });
+  });
+  devicesRevokeOthersBtn.addEventListener("click", () => {
+    armTwoStep(devicesRevokeOthersBtn, "Chắc chắn đăng xuất hết?", async () => {
+      devicesRevokeOthersBtn.disabled = true;
+      try{
+        await sheetCall({ action: "revokeDevice", deviceId: "others" });
+        await loadDevices();
+      }catch(err){
+        if(sessionRecord) alert("Không thực hiện được: " + err.message);
+      }finally{
+        devicesRevokeOthersBtn.disabled = false;
+      }
+    });
+  });
+  document.getElementById("devicesClose").addEventListener("click", closeDevicesModal);
+  devicesOverlay.addEventListener("click", (e) => { if(e.target === devicesOverlay) closeDevicesModal(); });
+
+  // ----- Đồng bộ trạng thái đăng nhập giữa các tab (đăng xuất ở tab này -> tab kia cũng thoát) -----
+  window.addEventListener("storage", (e) => {
+    if(e.key !== SESSION_KEY || !GOOGLE_CLIENT_ID) return;
+    if(!e.newValue){
+      if(sessionRecord){
+        clearSessionLocal();
+        closeAuthModals();
+        authGateShow("Bạn đã đăng xuất ở một tab khác.", true);
+        startSignInFlow();
+      }
+    }else if(!sessionRecord){
+      const saved = readStoredSession();
+      if(saved){ adoptSession(saved); authGateHide(); loadData(); }
+    }
+  });
+
+  function initGoogleSignIn(){
+    try{ sessionStorage.removeItem(OLD_AUTH_KEY); }catch(err){}
+    if(!GOOGLE_CLIENT_ID){
+      // Chưa cấu hình đăng nhập Google -> bỏ qua, chạy app bình thường (tương thích ngược).
+      loadData();
+      return;
+    }
+    initRememberCheckbox();
+    const saved = readStoredSession();
+    if(saved){
+      // Đã đăng nhập từ trước và còn hạn -> vào thẳng app, không cần nạp Google.
+      adoptSession(saved);
+      loadData();
+      return;
+    }
+    authGateShow("", false);
+    startSignInFlow();
   }
 
   // ---------- Init ----------
@@ -3018,4 +3519,12 @@ if("serviceWorker" in navigator){
   }
   setTimeout(hide, SPLASH_MIN_MS);
   el.addEventListener("click", hide);
+})();
+
+// ================== Font Google: nạp không chặn lần vẽ đầu ==================
+(function(){
+  var fl = document.getElementById("gfont");
+  if(!fl) return;
+  if(fl.sheet){ fl.media = "all"; return; }
+  fl.addEventListener("load", function(){ fl.media = "all"; });
 })();

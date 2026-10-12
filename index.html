@@ -2,6 +2,9 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8" />
+<!-- Content-Security-Policy: chỉ cho chạy script của chính app + 2 script inline (khoá bằng mã băm) + script đăng nhập Google.
+     Bị chèn mã lạ (XSS) cũng không chạy được -> bảo vệ phiên đăng nhập lưu trên máy. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eKpe29eEvLZnCiyNw30kVI5d/I0xkiG49r73OS925uw=' 'sha256-3gUziTHUZvGyjUbddR34r3MYSJY6/x4nbN6WNN9DHgk=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Sổ chi tiêu chung</title>
 <meta name="theme-color" content="#080B10" id="metaThemeColor" />
@@ -51,11 +54,10 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <!-- Font nạp KHÔNG chặn lần vẽ đầu tiên (media=print rồi đổi sang all khi tải xong) -> splash hệ thống Android biến mất sớm hơn -->
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<link id="gfont" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" media="print" />
 <noscript><link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" /></noscript>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="style.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="vendor/xlsx.full.min.js" defer></script>
 </head>
 <body>
   <!-- Splash động (PWA): hiện ngay sau splash hệ thống, tự gỡ sau ~2s hoặc khi chạm vào -->
@@ -104,8 +106,14 @@
       </div>
       <h1>Sổ chi tiêu chung</h1>
       <p id="authGateMsg">Đăng nhập bằng Google để tiếp tục — chỉ tài khoản đã được cấp quyền mới xem/sửa được dữ liệu.</p>
+      <label class="auth-remember" for="authRemember">
+        <input type="checkbox" id="authRemember" />
+        <span>Ghi nhớ trên thiết bị này (90 ngày)</span>
+      </label>
       <div id="googleSignInBtn" class="google-signin-slot"></div>
+      <p class="auth-gate-status" id="authGateStatus" style="display:none;" role="status"></p>
       <p class="auth-gate-error" id="authGateError" style="display:none;"></p>
+      <button type="button" class="btn-primary auth-retry" id="authRetryBtn" style="display:none;">Thử lại</button>
     </div>
   </div>
   <div class="wrap">
@@ -197,6 +205,10 @@
               <span id="syncMenuLabel">Đồng bộ</span>
             </button>
             <div class="menu-divider"></div>
+            <button type="button" class="menu-item" id="devicesBtn">
+              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
+              Thiết bị đăng nhập
+            </button>
             <button type="button" class="menu-item menu-item-danger" id="signOutBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>
               Đăng xuất
@@ -500,6 +512,37 @@
       <div class="modal-actions">
         <button type="button" class="btn-ghost" id="confirmCancelBtn">Huỷ</button>
         <button type="button" class="btn-primary" id="confirmOkBtn">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="logoutOverlay">
+    <div class="modal" style="max-width:360px">
+      <div class="modal-head">
+        <h3 class="modal-title">Đăng xuất</h3>
+      </div>
+      <p class="confirm-message">Bạn có muốn xoá dữ liệu sổ chi tiêu đang lưu trên máy này không?<br>Dữ liệu trên Google Sheet <b>không bị ảnh hưởng</b>.</p>
+      <p class="logout-note" id="logoutPendingNote" style="display:none;"></p>
+      <div class="logout-actions">
+        <button type="button" class="btn-primary" id="logoutKeepBtn">Đăng xuất, giữ dữ liệu trên máy</button>
+        <button type="button" class="btn-primary danger" id="logoutWipeBtn">Đăng xuất và xoá dữ liệu trên máy</button>
+        <button type="button" class="btn-ghost" id="logoutCancelBtn">Huỷ</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="devicesOverlay">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-head">
+        <h3 class="modal-title">Thiết bị đã đăng nhập</h3>
+        <button type="button" class="icon-btn" id="devicesClose" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="devices-list" id="devicesList"></div>
+      <p class="devices-hint">Mất điện thoại hoặc không nhận ra thiết bị nào đó? Bấm <b>Thu hồi</b> — thiết bị đó sẽ bị đăng xuất ngay ở lần kết nối kế tiếp.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost danger-ghost" id="devicesRevokeOthers" style="display:none;">Đăng xuất các thiết bị khác</button>
       </div>
     </div>
   </div>

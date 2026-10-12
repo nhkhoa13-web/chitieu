@@ -4,7 +4,7 @@
  *   dữ liệu chi tiêu luôn đi qua cơ chế đồng bộ + hàng đợi sẵn có của app.
  * - Mỗi lần sửa file giao diện, tăng CACHE_VERSION để máy người dùng nhận bản mới.
  */
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const SHELL_CACHE = "so-chi-tieu-shell-" + CACHE_VERSION;
 const CDN_CACHE = "so-chi-tieu-cdn-" + CACHE_VERSION;
 
@@ -22,8 +22,8 @@ const SHELL_FILES = [
   "./icons/favicon-32.png"
 ];
 
-// Chỉ các host tĩnh (font, thư viện xlsx) mới được cache; mọi host khác đi thẳng ra mạng.
-const CDN_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com"];
+// Chỉ font Google mới được cache; mọi host khác (Apps Script, đăng nhập Google...) đi thẳng ra mạng.
+const CDN_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
