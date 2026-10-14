@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <!-- Content-Security-Policy: chỉ cho chạy script của chính app + 2 script inline (khoá bằng mã băm) + script đăng nhập Google.
      Bị chèn mã lạ (XSS) cũng không chạy được -> bảo vệ phiên đăng nhập lưu trên máy. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eKpe29eEvLZnCiyNw30kVI5d/I0xkiG49r73OS925uw=' 'sha256-3gUziTHUZvGyjUbddR34r3MYSJY6/x4nbN6WNN9DHgk=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eKpe29eEvLZnCiyNw30kVI5d/I0xkiG49r73OS925uw=' 'sha256-gxr8viAGEWzwzYjXFSWjjar4hEomvWcIb8NWsu9un7o=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Sổ chi tiêu chung</title>
 <meta name="theme-color" content="#080B10" id="metaThemeColor" />
@@ -48,7 +48,15 @@
                   navigator.standalone === true;
       var force = /[?&]splash=1/.test(location.search);
       var seen = sessionStorage.getItem("so_chi_tieu:splash") === "1";
-      if (force || (isApp && !seen)) document.documentElement.classList.add("splash-on");
+      if (force || (isApp && !seen)) {
+        document.documentElement.classList.add("splash-on");
+        // CHỐT AN TOÀN: dù script.js lỗi hoặc tải chậm, quá 6 giây vẫn tự gỡ splash — không bao giờ để app kẹt sau màn hình chào.
+        setTimeout(function () {
+          var el = document.getElementById("splash");
+          if (el) el.remove();
+          document.documentElement.classList.remove("splash-on");
+        }, 6000);
+      }
     } catch (e) {}
   })();
 </script>
