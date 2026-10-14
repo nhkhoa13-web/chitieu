@@ -10,11 +10,15 @@
   let __particlePauseDepth = 0;
   function pauseParticleBg(){
     __particlePauseDepth++;
+    document.documentElement.classList.add("anim-paused"); // cán cân + chấm đồng hồ cũng tạm dừng (đang bị che kín)
     if(window.__particleStop) window.__particleStop();
   }
   function resumeParticleBg(){
     __particlePauseDepth = Math.max(0, __particlePauseDepth - 1);
-    if(__particlePauseDepth === 0 && window.__particleStart) window.__particleStart();
+    if(__particlePauseDepth === 0){
+      document.documentElement.classList.remove("anim-paused");
+      if(window.__particleStart) window.__particleStart();
+    }
   }
 
   function showErrorBanner(msg){
@@ -58,18 +62,14 @@
   }
   const DEFAULT_MONTH_KEY = currentSystemMonthKey();
 
-  // ---------- Google Sheet sync config ----------
-  // 1) Dán URL Web App (Apps Script) bạn deploy vào SHEET_SYNC_URL.
-  // 2) Đặt SHEET_SYNC_TOKEN trùng với giá trị SECRET_TOKEN trong file Code.gs.
+  // ---------- Cấu hình (đọc từ file config.js, điền 1 lần, các lần cập nhật code sau không đụng tới) ----------
   // Google Sheet là nguồn dữ liệu chính — localStorage chỉ dùng làm LỚP ĐỆM AN TOÀN
   // (đề phòng mất mạng giữa chừng), không phải nơi lưu trữ chính thức.
-  const SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbxCoDLzaz33EDqGHaP-1Q82_QLDwDzRNd7b_xV_Q47kxRG4wYIq1DBJweEEFPRXZ5dW/exec";
-  const SHEET_SYNC_TOKEN = "chitieu-2026-khoa2k";
-
-  // ---------- Đăng nhập Google (bắt buộc) ----------
-  // 3) Dán Google OAuth Client ID (loại "Web application") vào đây.
-  //    Danh sách email được phép đăng nhập phải khớp với ALLOWED_EMAILS trong Code.gs.
-  const GOOGLE_CLIENT_ID = "720144060509-anhh4inbkjq5pnac30f6gi0op8mls7cl.apps.googleusercontent.com";
+  // Thiếu config.js hoặc để trống -> app chạy thuần cục bộ (không đồng bộ, không đăng nhập).
+  const APP_CONFIG = window.APP_CONFIG || {};
+  const SHEET_SYNC_URL = String(APP_CONFIG.SHEET_SYNC_URL || "").trim();
+  const SHEET_SYNC_TOKEN = String(APP_CONFIG.SHEET_SYNC_TOKEN || "").trim();
+  const GOOGLE_CLIENT_ID = String(APP_CONFIG.GOOGLE_CLIENT_ID || "").trim();
   const CACHE_KEY = "so_chi_tieu:cache:v1";
   const QUEUE_KEY = "so_chi_tieu:queue:v1";
   const LAST_SYNC_KEY = "so_chi_tieu:last_sync_at";
@@ -106,6 +106,68 @@
     const metaTheme = document.getElementById("metaThemeColor");
     if(metaTheme) metaTheme.setAttribute("content", isLight ? "#F2F5F9" : "#080B10");
   }
+
+  // ---------- Hiệu năng & pin ----------
+  // Chế độ "Tiết kiệm pin" tắt các hiệu ứng động nặng (cán cân quay, nền hạt, đổ bóng, blur). Chưa chọn thì TỰ ĐỘNG:
+  // bật khi hệ thống yêu cầu giảm chuyển động / tiết kiệm dữ liệu / máy ít RAM hoặc ít lõi; còn lại để chế độ đầy đủ.
+  // Người dùng bấm công tắc trong menu thì lựa chọn đó được nhớ và thắng chế độ tự động.
+  const PERF_KEY = "so_chi_tieu:perf_mode"; // "lite" | "full"
+  let batteryLow = false; // pin <= 20% và không sạc (chỉ Chrome/Android có Battery API)
+  function autoPerfLite(){
+    try{
+      if(batteryLow) return true;
+      if(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return true;
+      const conn = navigator.connection;
+      if(conn && conn.saveData) return true;
+      if(navigator.deviceMemory && navigator.deviceMemory <= 2) return true;
+      if(navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) return true;
+    }catch(err){ /* ignore */ }
+    return false;
+  }
+  function getPerfLite(){
+    try{
+      const v = localStorage.getItem(PERF_KEY);
+      if(v === "lite") return true;
+      if(v === "full") return false;
+    }catch(err){ /* ignore */ }
+    return autoPerfLite();
+  }
+  function applyPerfMode(){
+    const lite = getPerfLite();
+    document.documentElement.setAttribute("data-perf", lite ? "lite" : "full");
+    const btn = document.getElementById("perfToggle");
+    if(btn) btn.setAttribute("aria-pressed", lite ? "true" : "false");
+    const label = document.getElementById("perfMenuLabel");
+    let explicit = null;
+    try{ explicit = localStorage.getItem(PERF_KEY); }catch(err){ /* ignore */ }
+    if(label) label.textContent = lite ? (explicit ? "Tiết kiệm pin: BẬT" : "Tiết kiệm pin: BẬT (tự động)") : "Tiết kiệm pin: tắt";
+    if(typeof window.__particleSetLite === "function") window.__particleSetLite(lite);
+  }
+  applyPerfMode(); // chạy sớm, trước khi nền hạt khởi động
+  // Pin yếu (<= 20%) và đang không sạc -> tự bật Tiết kiệm pin (chỉ khi người dùng chưa tự chọn). Sạc/pin lên lại thì tự trả về như cũ.
+  if(typeof navigator.getBattery === "function"){
+    navigator.getBattery().then((bat) => {
+      const update = () => {
+        const low = !bat.charging && bat.level <= 0.2;
+        if(low !== batteryLow){ batteryLow = low; applyPerfMode(); }
+      };
+      bat.addEventListener("levelchange", update);
+      bat.addEventListener("chargingchange", update);
+      update();
+    }).catch(() => { /* trình duyệt không cho dùng -> bỏ qua */ });
+  }
+  document.getElementById("perfToggle").addEventListener("click", () => {
+    try{ localStorage.setItem(PERF_KEY, getPerfLite() ? "full" : "lite"); }catch(err){ /* ignore */ }
+    applyPerfMode();
+  });
+  // Cán cân cuộn khỏi màn hình thì dừng các animation của nó (không ai nhìn thấy nên vẽ cũng vô ích).
+  (function(){
+    const box = document.querySelector(".scale-box");
+    if(!box || !("IntersectionObserver" in window)) return;
+    new IntersectionObserver((list) => {
+      list.forEach((en) => box.classList.toggle("offscreen", !en.isIntersecting));
+    }).observe(box);
+  })();
 
   // Bật/tắt tự động tải bản mới từ Google Sheet khi mở app, quay lại app (sau >= 2 phút) hoặc chuyển tháng.
   // Mặc định BẬT (sổ này dùng chung cho 2 người nên cần thấy khoản chi của nhau); người dùng có thể tắt bằng
@@ -2112,6 +2174,27 @@
   })();
 
   // ---------- Backup: export / import ----------
+  // Thư viện Excel (xlsx, ~880 KB) CHỈ được nạp khi bạn bấm Xuất/Nhập — mở app nhanh hơn, ít tốn RAM/pin hơn.
+  // Từ lần thứ hai trở đi lấy thẳng từ bộ nhớ đệm của Service Worker (cả khi offline).
+  let xlsxPromise = null;
+  function loadXlsx(){
+    if(typeof XLSX !== "undefined") return Promise.resolve();
+    if(xlsxPromise) return xlsxPromise;
+    xlsxPromise = new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = "vendor/xlsx.full.min.js";
+      el.async = true;
+      el.onload = () => {
+        if(typeof XLSX !== "undefined") resolve();
+        else{ xlsxPromise = null; reject(new Error("init")); }
+      };
+      el.onerror = () => { el.remove(); xlsxPromise = null; reject(new Error("load")); }; // cho phép thử lại
+      document.head.appendChild(el);
+    });
+    return xlsxPromise;
+  }
+  const EXCEL_LOAD_ERROR = "Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi thử lại.";
+
   const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú", "Công thức"];
   const XLSX_AMOUNT_FMT = '#,##0" đ"';
   // Biểu tượng màu thay cho tô màu ô: bản xlsx miễn phí đang dùng KHÔNG ghi được màu nền/màu chữ khi
@@ -2187,13 +2270,15 @@
   document.getElementById("exportCancelBtn").addEventListener("click", closeExportModal);
   exportOverlay.addEventListener("click", (e) => { if(e.target === exportOverlay) closeExportModal(); });
 
-  document.getElementById("exportBtn").addEventListener("click", () => {
+  document.getElementById("exportBtn").addEventListener("click", async () => {
     closeMenuPanel();
     try{
       commit();
       if(typeof XLSX === "undefined"){
-        showErrorBanner("Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi thử lại.");
-        return;
+        setSyncStatus("Đang tải thư viện Excel…", false);
+        try{ await loadXlsx(); }
+        catch(err){ refreshSyncStatus(); showErrorBanner(EXCEL_LOAD_ERROR); return; }
+        refreshSyncStatus();
       }
       openExportModal();
     }catch(err){ showErrorBanner("export: " + err.message); }
@@ -2318,10 +2403,8 @@
   const importFileInput = document.getElementById("importFileInput");
   document.getElementById("importBtn").addEventListener("click", () => {
     closeMenuPanel();
-    if(typeof XLSX === "undefined"){
-      showErrorBanner("Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi tải lại trang.");
-      return;
-    }
+    // Mở hộp chọn file ngay (trình duyệt chỉ cho phép ngay trong thao tác bấm), đồng thời nạp thư viện Excel ngầm.
+    loadXlsx().catch(() => {});
     importFileInput.click();
   });
 
@@ -2465,14 +2548,12 @@
     }
   });
 
-  importFileInput.addEventListener("change", () => {
+  importFileInput.addEventListener("change", async () => {
     const file = importFileInput.files && importFileInput.files[0];
     importFileInput.value = "";
     if(!file) return;
-    if(typeof XLSX === "undefined"){
-      showErrorBanner("Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi thử lại.");
-      return;
-    }
+    try{ await loadXlsx(); }
+    catch(err){ showErrorBanner(EXCEL_LOAD_ERROR); return; }
     const reader = new FileReader();
     reader.onload = () => {
       try{
@@ -2887,7 +2968,7 @@
   let sessionRecord = null;  // { token, email, exp, deviceId, remember }
   let googleUserEmail = null;
   const SESSION_KEY = "so_chi_tieu:session:v2";
-  const SESSION_REMEMBER_DAYS = 15; // phải KHỚP SESSION_TTL_DAYS trong Code.gs và chữ "(15 ngày)" trên ô Ghi nhớ trong index.html
+  const SESSION_REMEMBER_DAYS = Number(APP_CONFIG.REMEMBER_DAYS) > 0 ? Number(APP_CONFIG.REMEMBER_DAYS) : 15; // phải KHỚP SESSION_TTL_DAYS trong Code.gs
   const REMEMBER_PREF_KEY = "so_chi_tieu:remember_pref";
   const OLD_AUTH_KEY = "so_chi_tieu:auth:v1"; // khoá phiên kiểu cũ (idToken 1 giờ) — dọn đi
 
@@ -3017,6 +3098,8 @@
   }
   function initRememberCheckbox(){
     const cb = document.getElementById("authRemember");
+    const label = document.getElementById("authRememberLabel");
+    if(label) label.textContent = "Ghi nhớ trên thiết bị này (" + SESSION_REMEMBER_DAYS + " ngày)";
     cb.checked = defaultRemember();
     cb.addEventListener("change", () => {
       try{ localStorage.setItem(REMEMBER_PREF_KEY, cb.checked ? "1" : "0"); }catch(err){}
@@ -3685,8 +3768,9 @@ function initParticleNetwork(){
     renderFrame(dt);
   }
 
+  function perfLite(){ return document.documentElement.getAttribute("data-perf") === "lite"; }
   function start(){
-    if(running || reduceMotion) return;
+    if(running || reduceMotion || perfLite()) return;
     running = true;
     lastTime = 0;
     rafId = requestAnimationFrame(step);
@@ -3700,6 +3784,11 @@ function initParticleNetwork(){
   // nền hạt — xem pauseParticleBg()/resumeParticleBg() ở đầu file.
   window.__particleStart = start;
   window.__particleStop = stop;
+  // Công tắc "Tiết kiệm pin" gọi vào đây: bật -> dừng hẳn vòng lặp vẽ; tắt -> chạy lại (nếu tab đang hiện).
+  window.__particleSetLite = function(on){
+    if(on) stop();
+    else if(!document.hidden) start();
+  };
   // Cho nút chuyển giao diện sáng/tối (định nghĩa ở phần app chính) gọi lại khi người
   // dùng đổi theme, để hạt đổi màu ngay lập tức thay vì đợi lần load trang kế tiếp.
   window.__particleRefreshColors = function(){
@@ -3749,35 +3838,68 @@ function initParticleNetwork(){
 }
 initParticleNetwork();
 
-// ================== PWA: đăng ký Service Worker ==================
+// ================== PWA: Service Worker + số phiên bản + thông báo có bản mới ==================
 // Cần HTTPS (GitHub Pages) hoặc localhost. Lỗi đăng ký không được làm hỏng app.
-if("serviceWorker" in navigator){
+(function(){
+  if(!("serviceWorker" in navigator)) return;
+  var versionEl = document.getElementById("menuVersion");
+  var toast = document.getElementById("updateToast");
+  var hadController = !!navigator.serviceWorker.controller; // lần cài đầu tiên chưa có -> không báo "bản mới"
+  var reg = null, lastCheck = 0, updateShown = false, versionText = "";
+
+  function showVersion(text){ if(versionEl) versionEl.textContent = text; }
+  function askVersion(){
+    var sw = navigator.serviceWorker.controller;
+    if(sw) sw.postMessage({ type: "getVersion" });
+  }
+  function showUpdateToast(){
+    updateShown = true;
+    if(toast) toast.hidden = false;
+  }
+  navigator.serviceWorker.addEventListener("message", function(e){
+    if(e.data && e.data.type === "version"){
+      versionText = "Phiên bản " + e.data.version + " · bấm để kiểm tra bản mới";
+      showVersion(versionText);
+    }
+  });
+  // Service Worker mới đã tiếp quản: file mới đã sẵn sàng, nhưng trang đang mở vẫn chạy bản cũ cho tới khi tải lại.
+  navigator.serviceWorker.addEventListener("controllerchange", function(){
+    if(hadController) showUpdateToast();
+    hadController = true;
+    askVersion();
+  });
+  function checkForUpdate(manual){
+    if(!reg) return;
+    lastCheck = Date.now();
+    if(manual) showVersion("Đang kiểm tra…");
+    reg.update().catch(function(){}).then(function(){
+      if(!manual) return;
+      setTimeout(function(){
+        if(updateShown){ askVersion(); return; }
+        showVersion("✓ Đã là bản mới nhất");
+        setTimeout(function(){ showVersion(versionText || "Phiên bản …"); }, 2500);
+      }, 1200);
+    });
+  }
+  if(versionEl) versionEl.addEventListener("click", function(){ checkForUpdate(true); });
+  var reloadBtn = document.getElementById("updateToastBtn");
+  if(reloadBtn) reloadBtn.addEventListener("click", function(){ location.reload(); });
+  var closeBtn = document.getElementById("updateToastClose");
+  if(closeBtn) closeBtn.addEventListener("click", function(){ if(toast) toast.hidden = true; });
+  // App chạy nền lâu (PWA không tự "mở trang mới") -> khi quay lại, tự hỏi xem có bản mới không (tối đa 30 phút/lần).
+  document.addEventListener("visibilitychange", function(){
+    if(document.visibilityState === "visible" && reg && Date.now() - lastCheck > 30 * 60 * 1000) checkForUpdate(false);
+  });
   window.addEventListener("load", function(){
-    navigator.serviceWorker.register("sw.js").catch(function(err){
+    navigator.serviceWorker.register("sw.js").then(function(r){
+      reg = r;
+      lastCheck = Date.now();
+      askVersion();
+      navigator.serviceWorker.ready.then(askVersion);
+    }).catch(function(err){
       console.warn("Không đăng ký được Service Worker:", err);
     });
   });
-}
-
-
-// ================== PWA: điều khiển Splash động ==================
-// Tự gỡ sau SPLASH_MIN_MS (hoặc chạm vào để bỏ qua). Mỗi phiên chỉ hiện 1 lần (tải lại trang không chiếu lại).
-(function(){
-  var el = document.getElementById("splash");
-  if(!el) return;
-  var root = document.documentElement;
-  if(!root.classList.contains("splash-on")){ el.remove(); return; }
-  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var SPLASH_MIN_MS = reduce ? 1000 : 2300;
-  var done = false;
-  try{ sessionStorage.setItem("so_chi_tieu:splash", "1"); }catch(e){}
-  function hide(){
-    if(done) return; done = true;
-    el.classList.add("out");
-    setTimeout(function(){ el.remove(); root.classList.remove("splash-on"); }, reduce ? 350 : 650);
-  }
-  setTimeout(hide, SPLASH_MIN_MS);
-  el.addEventListener("click", hide);
 })();
 
 // ================== Font Google: nạp không chặn lần vẽ đầu ==================

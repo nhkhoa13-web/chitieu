@@ -1050,3 +1050,36 @@
   }
   .mini-btn.danger{ color:#ff6b81; border-color:rgba(255,59,92,0.5); }
   .mini-btn:disabled{ opacity:0.5; cursor:not-allowed; }
+
+  /* ============ Hiệu năng & pin ============ */
+  /* Chế độ ĐẦY ĐỦ: các hiệu ứng quay/nhấp nháy của cán cân chạy 12–20 khung/giây thay vì 60. Với chuyển động chậm thế này
+     mắt gần như không phân biệt được, nhưng giảm hơn một nửa công vẽ lại — mỗi lớp lại có drop-shadow nên khung hình nào cũng phải tính lại. */
+  .scale-taiji{ animation-timing-function:steps(240); }   /* 16 giây/vòng -> 15 khung/giây (quay rất chậm, mỗi bước 1,5°) */
+  .scale-orbit{ animation-timing-function:steps(180); }    /* 9 giây/vòng  -> 20 khung/giây */
+  .scale-orbit2{ animation-timing-function:steps(280); }   /* 14 giây/vòng -> 20 khung/giây */
+  .scale-pivot-cap, .scale-taiji-glow{ animation-timing-function:steps(36); } /* nhấp nháy 3 giây -> 12 khung/giây (độ mờ đổi từng nấc rất nhỏ) */
+  /* Tạm dừng khi không ai nhìn thấy: cán cân đã cuộn khỏi màn hình, hoặc có hộp thoại phủ kín màn hình. */
+  html.anim-paused .scale-box *, html.anim-paused .hud-clock-dot, .scale-box.offscreen *{ animation-play-state:paused !important; }
+  /* Chế độ TIẾT KIỆM PIN: không còn animation lặp vô hạn, không đổ bóng nặng, không blur nền, không nền hạt chuyển động. */
+  html[data-perf="lite"] .scale-pivot-cap, html[data-perf="lite"] .scale-orbit, html[data-perf="lite"] .scale-orbit2,
+  html[data-perf="lite"] .scale-taiji, html[data-perf="lite"] .scale-taiji-glow, html[data-perf="lite"] .hud-clock-dot{ animation:none !important; }
+  html[data-perf="lite"] .scale-box *{ filter:none !important; }
+  html[data-perf="lite"] *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
+  html[data-perf="lite"] #particleNetwork{ display:none !important; }
+
+  /* ============ Phiên bản + thông báo có bản mới ============ */
+  .menu-version{
+    display:block; width:100%; background:transparent; border:0; padding:8px 10px 4px; cursor:pointer;
+    font-size:11px; color:var(--text-faint); text-align:center;
+  }
+  .update-toast{
+    position:fixed; left:50%; transform:translateX(-50%); z-index:150;
+    bottom:calc(84px + env(safe-area-inset-bottom, 0px)); display:flex; align-items:center; gap:10px;
+    max-width:calc(100vw - 24px); padding:10px 12px 10px 14px; border-radius:12px; font-size:13px; color:var(--text-hi);
+    background:var(--surface2); border:1px solid rgba(var(--chong-rgb),0.55); box-shadow:0 10px 30px rgba(0,0,0,0.45);
+  }
+  .update-toast[hidden]{ display:none; }
+  .update-toast-btn{
+    background:var(--chong); color:#06222a; border:0; border-radius:9px; padding:7px 12px; font-size:12.5px; font-weight:700; cursor:pointer;
+  }
+  .update-toast-close{ background:transparent; border:0; color:var(--text-faint); font-size:14px; cursor:pointer; padding:4px 6px; }

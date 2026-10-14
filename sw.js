@@ -4,7 +4,7 @@
  *   dữ liệu chi tiêu luôn đi qua cơ chế đồng bộ + hàng đợi sẵn có của app.
  * - Mỗi lần sửa file giao diện, tăng CACHE_VERSION để máy người dùng nhận bản mới.
  */
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 const SHELL_CACHE = "so-chi-tieu-shell-" + CACHE_VERSION;
 const CDN_CACHE = "so-chi-tieu-cdn-" + CACHE_VERSION;
 
@@ -22,13 +22,21 @@ const SHELL_FILES = [
   "./icons/favicon-32.png"
 ];
 
+// File KHÔNG bắt buộc: thiếu cũng không làm hỏng việc cài đặt (config.js có thể chưa tạo; xlsx nặng ~880 KB, chỉ cần cho Xuất/Nhập Excel
+// nên được lấy sẵn ngầm để dùng được cả khi offline).
+const OPTIONAL_FILES = ["./config.js", "./vendor/xlsx.full.min.js"];
+
 // Chỉ font Google mới được cache; mọi host khác (Apps Script, đăng nhập Google...) đi thẳng ra mạng.
 const CDN_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_FILES))
+      .then((cache) =>
+        cache.addAll(SHELL_FILES).then(() =>
+          Promise.all(OPTIONAL_FILES.map((u) => cache.add(u).catch(() => {})))
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -91,3 +99,10 @@ async function staleWhileRevalidate(req) {
     .catch(() => null);
   return cached || (await refresh) || Response.error();
 }
+
+// App hỏi số phiên bản đang chạy để hiện trong menu.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "getVersion" && event.source) {
+    event.source.postMessage({ type: "version", version: CACHE_VERSION });
+  }
+});

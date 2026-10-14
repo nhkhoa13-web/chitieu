@@ -57,7 +57,6 @@
 <link id="gfont" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" media="print" />
 <noscript><link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" /></noscript>
 <link rel="stylesheet" href="style.css">
-<script src="vendor/xlsx.full.min.js" defer></script>
 </head>
 <body>
   <!-- Splash động (PWA): hiện ngay sau splash hệ thống, tự gỡ sau ~2s hoặc khi chạm vào -->
@@ -108,7 +107,7 @@
       <p id="authGateMsg">Đăng nhập bằng Google để tiếp tục — chỉ tài khoản đã được cấp quyền mới xem/sửa được dữ liệu.</p>
       <label class="auth-remember" for="authRemember">
         <input type="checkbox" id="authRemember" />
-        <span>Ghi nhớ trên thiết bị này (15 ngày)</span>
+        <span id="authRememberLabel">Ghi nhớ trên thiết bị này (15 ngày)</span>
       </label>
       <div id="googleSignInBtn" class="google-signin-slot"></div>
       <p class="auth-gate-status" id="authGateStatus" style="display:none;" role="status"></p>
@@ -200,6 +199,11 @@
               </span>
               <span id="themeMenuLabel">Giao diện tối</span>
             </button>
+            <button type="button" class="menu-item" id="perfToggle" aria-pressed="false"
+              title="Tắt bớt hiệu ứng động và nền chuyển động để đỡ hao pin, máy mát hơn">
+              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 12h5"/></svg></span>
+              <span id="perfMenuLabel">Tiết kiệm pin</span>
+            </button>
             <button type="button" class="menu-item" id="syncNowBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span>
               <span id="syncMenuLabel">Đồng bộ</span>
@@ -213,6 +217,8 @@
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>
               Đăng xuất
             </button>
+            <div class="menu-divider"></div>
+            <button type="button" class="menu-version" id="menuVersion" title="Bấm để kiểm tra bản mới">Phiên bản …</button>
           </div>
         </div>
       </div>
@@ -565,6 +571,12 @@
     </div>
   </div>
 
+  <div class="update-toast" id="updateToast" role="status" hidden>
+    <span>Có bản mới của ứng dụng.</span>
+    <button type="button" class="update-toast-btn" id="updateToastBtn">Tải lại</button>
+    <button type="button" class="update-toast-close" id="updateToastClose" aria-label="Để sau">✕</button>
+  </div>
+
   <div class="modal-overlay" id="exportOverlay">
     <div class="modal" style="max-width:420px">
       <div class="modal-head">
@@ -674,6 +686,7 @@
     </div>
   </div>
 
+<script src="config.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
