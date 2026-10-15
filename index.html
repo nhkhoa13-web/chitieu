@@ -138,27 +138,7 @@
           <div class="month-panel" id="monthPanel">
             <div class="month-list" id="monthList"></div>
             <div class="month-add-row">
-              <div class="ym-picker" id="ymPicker">
-                <button type="button" class="day-trigger day-trigger-sm" id="ymTrigger">
-                  <span id="ymTriggerLabel">Tháng 8 · 2026</span>
-                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <input type="hidden" id="newMonthSelect" aria-label="Chọn tháng" />
-                <input type="hidden" id="newYearSelect" aria-label="Chọn năm" />
-                <div class="ym-panel" id="ymPanel">
-                  <div class="ym-year-header">
-                    <button type="button" class="ym-year-nav" id="ymYearPrev" aria-label="Năm trước">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-                    <span class="ym-year-label" id="ymYearLabel">2026</span>
-                    <button type="button" class="ym-year-nav" id="ymYearNext" aria-label="Năm sau">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                  </div>
-                  <div class="ym-month-grid" id="ymMonthGrid"></div>
-                </div>
-              </div>
-              <button type="button" class="btn-primary" id="addMonthBtn">Thêm</button>
+              <button type="button" class="btn-primary month-add-btn" id="addMonthBtn">＋ Thêm tháng</button>
             </div>
           </div>
         </div>
@@ -583,6 +563,53 @@
     <span>Có bản mới của ứng dụng.</span>
     <button type="button" class="update-toast-btn" id="updateToastBtn">Tải lại</button>
     <button type="button" class="update-toast-close" id="updateToastClose" aria-label="Để sau">✕</button>
+  </div>
+
+  <div class="modal-overlay" id="monthLoadOverlay">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-head">
+        <h3 class="modal-title">Thêm tháng</h3>
+        <button type="button" class="icon-btn" id="monthLoadClose" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="devices-hint">Chọn các tháng muốn <b>tải về máy</b> từ Google Sheet, rồi bấm <b>Tải</b>.</p>
+      <div class="devices-list" id="monthLoadList"></div>
+      <div class="month-load-tools">
+        <button type="button" class="link-btn" id="monthLoadSelectAll" style="display:none;">Chọn tất cả tháng chưa có</button>
+      </div>
+      <p class="month-load-msg" id="monthLoadMsg" style="display:none;" role="status"></p>
+      <div class="month-create">
+        <div class="month-create-title">Hoặc tạo tháng mới (chưa có trên Sheet)</div>
+        <div class="month-create-row">
+        <div class="ym-picker" id="ymPicker">
+          <button type="button" class="day-trigger day-trigger-sm" id="ymTrigger">
+            <span id="ymTriggerLabel">Tháng 8 · 2026</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <input type="hidden" id="newMonthSelect" aria-label="Chọn tháng" />
+          <input type="hidden" id="newYearSelect" aria-label="Chọn năm" />
+          <div class="ym-panel" id="ymPanel">
+            <div class="ym-year-header">
+              <button type="button" class="ym-year-nav" id="ymYearPrev" aria-label="Năm trước">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <span class="ym-year-label" id="ymYearLabel">2026</span>
+              <button type="button" class="ym-year-nav" id="ymYearNext" aria-label="Năm sau">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+            <div class="ym-month-grid" id="ymMonthGrid"></div>
+          </div>
+        </div>
+          <button type="button" class="btn-ghost" id="createMonthBtn">Tạo</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="monthLoadCancel">Đóng</button>
+        <button type="button" class="btn-primary" id="monthLoadConfirm" disabled>Tải</button>
+      </div>
+    </div>
   </div>
 
   <div class="modal-overlay" id="exportOverlay">

@@ -899,7 +899,7 @@
       '</div>'
     ).join("");
   }
-  function switchMonth(key){
+  function switchMonth(key, opts){
     if(!monthsData[key]) monthsData[key] = [];
     currentMonthKey = key;
     entries = monthsData[key];
@@ -907,7 +907,7 @@
     saveCache(); // nhớ lại tháng đang xem, để lần mở app sau tự mở đúng tháng này
     renderMonthUI();
     render();
-    if(SHEET_SYNC_URL && getAutoPull()) pullMonth(key);
+    if(SHEET_SYNC_URL && getAutoPull() && !(opts && opts.skipPull)) pullMonth(key);
   }
 
   // ---------- Derived computations ----------
@@ -2780,12 +2780,144 @@
       return '<button type="button" class="ym-month-cell' + (active ? " active" : "") + '" data-val="' + v + '">Th' + (i + 1) + '</button>';
     }).join("");
   }
-  document.getElementById("addMonthBtn").addEventListener("click", () => {
+  // ---------- Popup "Thêm tháng": tải các tháng có trên Google Sheet về máy, hoặc tạo tháng mới ----------
+  const monthLoadOverlay = document.getElementById("monthLoadOverlay");
+  const monthLoadList = document.getElementById("monthLoadList");
+  const monthLoadConfirm = document.getElementById("monthLoadConfirm");
+  const monthLoadMsg = document.getElementById("monthLoadMsg");
+  const monthLoadAllBtn = document.getElementById("monthLoadSelectAll");
+  let sheetMonths = [];       // [{ monthKey, count }] các tháng đang có trên Sheet (mới nhất trước)
+  let monthLoadBusy = false;  // đang tải -> khoá các nút để không bấm chồng
+  function setMonthLoadMsg(text, isError){
+    monthLoadMsg.textContent = text || "";
+    monthLoadMsg.classList.toggle("error", !!isError);
+    monthLoadMsg.style.display = text ? "" : "none";
+  }
+  function selectedMonthKeys(){
+    return Array.from(monthLoadList.querySelectorAll('input[type="checkbox"]:not(:disabled):checked')).map((i) => i.dataset.month);
+  }
+  function updateMonthLoadButtons(){
+    const n = selectedMonthKeys().length;
+    const selectable = monthLoadList.querySelectorAll('input[type="checkbox"]:not(:disabled)').length;
+    monthLoadConfirm.disabled = monthLoadBusy || n === 0;
+    monthLoadConfirm.textContent = n ? "Tải (" + n + ")" : "Tải";
+    monthLoadAllBtn.style.display = selectable ? "" : "none";
+    monthLoadAllBtn.textContent = (n && n === selectable) ? "Bỏ chọn tất cả" : "Chọn tất cả tháng chưa có";
+  }
+  function renderMonthLoadList(){
+    if(!sheetMonths.length){
+      monthLoadList.innerHTML = '<p class="devices-empty">Trên Google Sheet chưa có tháng nào.</p>';
+      updateMonthLoadButtons();
+      return;
+    }
+    monthLoadList.innerHTML = sheetMonths.map((m) => {
+      const local = Object.prototype.hasOwnProperty.call(monthsData, m.monthKey);
+      return '<label class="month-load-row' + (local ? " is-local" : "") + '">' +
+        '<input type="checkbox" data-month="' + escapeHtml(m.monthKey) + '"' + (local ? " checked disabled" : "") + " />" +
+        '<span class="month-load-name">' + escapeHtml(monthLabel(m.monthKey)) + "</span>" +
+        '<span class="month-load-meta">' + (local ? "Đã có trên máy" : (m.count + " khoản")) + "</span>" +
+      "</label>";
+    }).join("");
+    updateMonthLoadButtons();
+  }
+  function monthLoadError(text){
+    monthLoadList.innerHTML = '<p class="devices-empty">' + escapeHtml(text) + '</p><button type="button" class="mini-btn" id="monthLoadRetry">Thử lại</button>';
+    updateMonthLoadButtons();
+  }
+  async function loadSheetMonths(){
+    setMonthLoadMsg("");
+    if(!SHEET_SYNC_URL){
+      monthLoadList.innerHTML = '<p class="devices-empty">Chưa bật đồng bộ Google Sheet nên chưa có danh sách tháng trên Sheet. Bạn vẫn tạo được tháng mới ở bên dưới.</p>';
+      updateMonthLoadButtons();
+      return;
+    }
+    monthLoadList.innerHTML = '<p class="devices-empty">Đang lấy danh sách tháng từ Google Sheet…</p>';
+    updateMonthLoadButtons();
+    try{
+      // Qua khoá đồng bộ: gửi nốt thay đổi còn chờ (vd. lệnh xoá tháng) trước, để danh sách phản ánh đúng Sheet.
+      const data = await withSyncLock(async () => {
+        await drainQueue();
+        return sheetRequest({ action: "listMonths" });
+      });
+      sheetMonths = (data.months || []).filter((m) => m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m.monthKey));
+      renderMonthLoadList();
+    }catch(raw){
+      const err = toSyncError(raw);
+      if(err.kind === "auth"){ handleSyncAuthError({ authError: true, error: err.message }); return; }
+      monthLoadError("Không lấy được danh sách tháng từ Sheet: " + err.message);
+    }
+  }
+  function openMonthLoad(){
+    closeMonthPanel();
+    populateNewMonthPickers();
+    closeYmPanel();
+    monthLoadOverlay.classList.add("show");
+    pauseParticleBg();
+    loadSheetMonths();
+  }
+  function closeMonthLoad(){
+    if(monthLoadBusy) return;
+    closeYmPanel();
+    monthLoadOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+  async function downloadSelectedMonths(){
+    const keys = selectedMonthKeys();
+    if(!keys.length || monthLoadBusy) return;
+    monthLoadBusy = true;
+    updateMonthLoadButtons();
+    const done = [], failed = [];
+    for(let i = 0; i < keys.length; i++){
+      setMonthLoadMsg("Đang tải " + (i + 1) + "/" + keys.length + ": " + monthLabel(keys[i]) + "…");
+      const r = await pullMonth(keys[i]);
+      if(r && r.ok) done.push(keys[i]);
+      else{
+        failed.push(keys[i]);
+        if(r && r.kind === "auth") break; // hết phiên: cổng đăng nhập đã hiện
+      }
+    }
+    monthLoadBusy = false;
+    renderMonthUI(); // danh sách tháng trên máy cập nhật ngay
+    if(failed.length){
+      const why = (lastSyncError && lastSyncError.message) ? " (" + lastSyncError.message + ")" : "";
+      setMonthLoadMsg((done.length ? "Đã tải " + done.length + " tháng. " : "") + "Chưa tải được: " + failed.map(monthLabel).join(", ") + why + ". Bấm Tải để thử lại.", true);
+      renderMonthLoadList(); // các tháng đã tải xong chuyển sang "Đã có trên máy"
+      // Giữ nguyên dấu tích ở các tháng chưa tải được, để bấm Tải là thử lại đúng các tháng đó.
+      failed.forEach((k) => {
+        const cb = monthLoadList.querySelector('input[data-month="' + k + '"]');
+        if(cb && !cb.disabled) cb.checked = true;
+      });
+      updateMonthLoadButtons();
+      return;
+    }
+    closeMonthLoad();
+    if(done.length === 1){
+      switchMonth(done[0], { skipPull: true }); // vừa tải xong nên không cần tải lại lần nữa
+    }else{
+      setSyncStatus("Đã tải " + done.length + " tháng từ Google Sheet: " + done.map(monthLabel).join(", "), false);
+      setTimeout(refreshSyncStatus, 5000);
+    }
+  }
+  document.getElementById("addMonthBtn").addEventListener("click", openMonthLoad);
+  document.getElementById("monthLoadClose").addEventListener("click", closeMonthLoad);
+  document.getElementById("monthLoadCancel").addEventListener("click", closeMonthLoad);
+  monthLoadOverlay.addEventListener("click", (e) => { if(e.target === monthLoadOverlay) closeMonthLoad(); });
+  monthLoadList.addEventListener("change", updateMonthLoadButtons);
+  monthLoadList.addEventListener("click", (e) => { if(e.target.closest("#monthLoadRetry")) loadSheetMonths(); });
+  monthLoadAllBtn.addEventListener("click", () => {
+    const boxes = Array.from(monthLoadList.querySelectorAll('input[type="checkbox"]:not(:disabled)'));
+    const all = boxes.length > 0 && boxes.every((b) => b.checked);
+    boxes.forEach((b) => { b.checked = !all; });
+    updateMonthLoadButtons();
+  });
+  monthLoadConfirm.addEventListener("click", downloadSelectedMonths);
+  // Tạo tháng mới (chưa có trên Sheet): chọn tháng/năm ở bộ chọn trong popup rồi bấm Tạo — như nút "Thêm" trước đây.
+  document.getElementById("createMonthBtn").addEventListener("click", () => {
     const m = document.getElementById("newMonthSelect").value;
     const y = document.getElementById("newYearSelect").value;
-    if(!m || !y) return;
+    if(!m || !y || monthLoadBusy) return;
+    closeMonthLoad();
     switchMonth(y + "-" + m);
-    closeMonthPanel();
   });
   const ymTriggerBtn = document.getElementById("ymTrigger");
   const ymPanelEl = document.getElementById("ymPanel");
@@ -3858,7 +3990,7 @@ initParticleNetwork();
   }
   navigator.serviceWorker.addEventListener("message", function(e){
     if(e.data && e.data.type === "version"){
-      versionText = "Phiên bản " + e.data.version + " · bấm để kiểm tra bản mới";
+      versionText = "Phiên bản " + e.data.version + " · bấm để kiểm tra";
       showVersion(versionText);
     }
   });

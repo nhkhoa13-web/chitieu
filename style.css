@@ -1083,3 +1083,25 @@
     background:var(--chong); color:#06222a; border:0; border-radius:9px; padding:7px 12px; font-size:12.5px; font-weight:700; cursor:pointer;
   }
   .update-toast-close{ background:transparent; border:0; color:var(--text-faint); font-size:14px; cursor:pointer; padding:4px 6px; }
+
+  /* ============ Popup "Thêm tháng" (tải tháng từ Sheet / tạo tháng mới) ============ */
+  .month-add-btn{ width:100%; justify-content:center; }
+  .month-load-row{
+    display:flex; align-items:center; gap:10px; padding:11px 12px; cursor:pointer;
+    background:var(--surface3, rgba(255,255,255,0.04)); border:1px solid var(--border); border-radius:11px;
+  }
+  .month-load-row input{ width:18px; height:18px; accent-color:var(--chong); flex-shrink:0; cursor:pointer; }
+  .month-load-row.is-local{ opacity:0.6; cursor:default; }
+  .month-load-row.is-local input{ cursor:default; }
+  .month-load-name{ flex:1; font-size:14px; font-weight:600; color:var(--text-hi); }
+  .month-load-meta{ font-size:12px; color:var(--text-faint); white-space:nowrap; }
+  .month-load-tools{ display:flex; justify-content:flex-end; margin:-4px 0 10px; }
+  .link-btn{ background:none; border:0; padding:4px 2px; color:var(--chong-soft); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .month-load-msg{ margin:0 0 10px; font-size:12.5px; line-height:1.5; color:var(--chong-soft); }
+  .month-load-msg.error{ color:var(--vk-soft); }
+  .month-create{ border-top:1px solid var(--border); padding-top:12px; margin:4px 0 12px; }
+  .month-create-title{ font-size:12px; color:var(--text-faint); margin-bottom:8px; }
+  .month-create-row{ display:flex; gap:8px; align-items:flex-start; }
+  .month-create-row .btn-ghost{ padding:9px 14px; font-size:13px; flex-shrink:0; }
+  /* bảng chọn tháng nằm TRONG popup: bung ngay bên dưới thay vì nổi lên (tránh bị cắt khi popup cuộn) */
+  .month-create .ym-panel{ position:static; width:100%; max-width:none; margin-top:8px; box-shadow:none; backdrop-filter:none; }
