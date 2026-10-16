@@ -6,7 +6,7 @@
      Bị chèn mã lạ (XSS) cũng không chạy được -> bảo vệ phiên đăng nhập lưu trên máy. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-eKpe29eEvLZnCiyNw30kVI5d/I0xkiG49r73OS925uw=' 'sha256-gxr8viAGEWzwzYjXFSWjjar4hEomvWcIb8NWsu9un7o=' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Sổ chi tiêu chung</title>
+<title>Sổ chi tiêu</title>
 <meta name="theme-color" content="#080B10" id="metaThemeColor" />
 <!-- PWA: cài lên màn hình chính, chạy như app thật -->
 <link rel="manifest" href="manifest.json" />
@@ -111,7 +111,7 @@
       <div class="auth-gate-icon">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       </div>
-      <h1>Sổ chi tiêu chung</h1>
+      <h1>Sổ chi tiêu</h1>
       <p id="authGateMsg">Đăng nhập bằng Google để tiếp tục — chỉ tài khoản đã được cấp quyền mới xem/sửa được dữ liệu.</p>
       <label class="auth-remember" for="authRemember">
         <input type="checkbox" id="authRemember" />
@@ -126,7 +126,7 @@
   <div class="wrap">
     <header class="top">
       <div>
-        <div class="eyebrow">SỔ CHI TIÊU CHUNG</div>
+        <div class="eyebrow">SỔ CHI TIÊU</div>
         <div class="sync-status-row" style="display:flex; align-items:center; gap:6px; margin-bottom:4px; min-width:0;">
           <div class="sync-status" id="syncStatus" style="font-size:11px;color:var(--text-faint);min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;"></div>
         </div>
@@ -608,6 +608,27 @@
       <div class="modal-actions">
         <button type="button" class="btn-ghost" id="monthLoadCancel">Đóng</button>
         <button type="button" class="btn-primary" id="monthLoadConfirm" disabled>Tải</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="deleteMonthOverlay">
+    <div class="modal" style="max-width:390px">
+      <div class="modal-head">
+        <h3 class="modal-title" id="deleteMonthTitle">Xoá tháng</h3>
+      </div>
+      <p class="confirm-message" id="deleteMonthInfo"></p>
+      <p class="logout-note" id="deleteMonthNote" style="display:none;"></p>
+      <div class="delete-month-actions">
+        <button type="button" class="delete-month-opt" id="deleteMonthLocalBtn">
+          <span class="opt-title" id="deleteMonthLocalTitle">Chỉ xoá trên máy này</span>
+          <span class="opt-sub" id="deleteMonthLocalSub">Giữ nguyên trên Google Sheet. Tải lại được bằng ＋ Thêm tháng.</span>
+        </button>
+        <button type="button" class="delete-month-opt danger" id="deleteMonthSheetBtn">
+          <span class="opt-title" id="deleteMonthSheetTitle">Xoá cả trên máy và Google Sheet</span>
+          <span class="opt-sub">Xoá vĩnh viễn tab tháng này trên Sheet, mọi thiết bị đều mất. Không thể hoàn tác.</span>
+        </button>
+        <button type="button" class="btn-ghost" id="deleteMonthCancel">Huỷ</button>
       </div>
     </div>
   </div>

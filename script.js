@@ -508,6 +508,14 @@
     el.textContent = text || "";
     el.style.color = isError ? "var(--vk-soft)" : "var(--text-faint)";
   }
+  // Thông báo tạm thời trên dòng trạng thái (vd. "Đã tải 2 tháng…"). Dùng MỘT bộ hẹn giờ chung: thông báo mới thay thông báo cũ
+  // và huỷ hẹn giờ cũ, nên hẹn giờ của thông báo trước không xoá nhầm thông báo sau.
+  let flashTimer = null;
+  function flashSyncStatus(text, ms){
+    clearTimeout(flashTimer);
+    setSyncStatus(text, false);
+    flashTimer = setTimeout(refreshSyncStatus, ms || 5000);
+  }
   function fmtClock(ms){
     return new Date(ms).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
   }
@@ -2605,11 +2613,7 @@
   document.getElementById("autoPullToggle").addEventListener("click", () => {
     const next = !getAutoPull();
     setAutoPull(next);
-    setSyncStatus(
-      next ? "Đã BẬT tự động tải bản mới khi mở/quay lại app" : "Đã TẮT tự động tải bản mới",
-      false
-    );
-    setTimeout(refreshSyncStatus, 3000);
+    flashSyncStatus(next ? "Đã BẬT tự động tải bản mới khi mở/quay lại app" : "Đã TẮT tự động tải bản mới", 3000);
     if(next && SHEET_SYNC_URL) pullMonth(currentMonthKey);
   });
 
@@ -2716,36 +2720,109 @@
     switchMonth(item.dataset.month);
     closeMonthPanel();
   });
-  function deleteMonth(key){
-    if(!monthsData[key]) return;
-    const count = (monthsData[key] || []).length;
-    openConfirm(
-      "Xoá " + monthLabel(key) + "?",
-      "Toàn bộ " + count + " khoản chi của " + monthLabel(key) + " sẽ bị xoá" +
-        (SHEET_SYNC_URL ? " (cả trên Google Sheet)" : "") + ". Không thể hoàn tác.",
-      "Xoá tháng",
-      true,
-      () => {
-        delete monthsData[key];
-        if(key === currentMonthKey){
-          const remainingKeys = Object.keys(monthsData).sort().reverse();
-          if(remainingKeys.length){
-            currentMonthKey = remainingKeys[0];
-          }else{
-            currentMonthKey = key;
-            monthsData[key] = [];
-          }
-          entries = monthsData[currentMonthKey];
-        }
-        saveCache();
-        renderMonthUI();
-        render();
-        closeMonthPanel();
-        // Lệnh xoá đi qua hàng đợi chung: bỏ các thay đổi chưa gửi của tháng này, gửi đúng thứ tự, mất mạng thì tự thử lại.
-        queueDeleteMonth(key);
+  // ---------- Xoá tháng: chọn xoá CHỈ trên máy này, hay cả trên Google Sheet ----------
+  const deleteMonthOverlay = document.getElementById("deleteMonthOverlay");
+  const deleteMonthNote = document.getElementById("deleteMonthNote");
+  const deleteMonthLocalBtn = document.getElementById("deleteMonthLocalBtn");
+  const deleteMonthSheetBtn = document.getElementById("deleteMonthSheetBtn");
+  const SHEET_DELETE_LABEL = "Xoá cả trên máy và Google Sheet";
+  let deleteMonthKey = null;
+  let deleteArmTimer = null;
+  // Bỏ tháng khỏi máy (dùng chung cho cả 2 cách xoá): chuyển sang tháng khác nếu đang xem tháng này.
+  function removeMonthLocally(key){
+    delete monthsData[key];
+    if(key === currentMonthKey){
+      const remainingKeys = Object.keys(monthsData).sort().reverse();
+      if(remainingKeys.length){
+        currentMonthKey = remainingKeys[0];
+      }else{
+        currentMonthKey = key;
+        monthsData[key] = [];
       }
-    );
+      entries = monthsData[currentMonthKey];
+    }
+    saveCache();
+    renderMonthUI();
+    render();
+    closeMonthPanel();
   }
+  function disarmSheetDelete(){
+    clearTimeout(deleteArmTimer);
+    deleteMonthSheetBtn.classList.remove("armed");
+    document.getElementById("deleteMonthSheetTitle").textContent = SHEET_DELETE_LABEL;
+  }
+  function openDeleteMonth(key){
+    if(!monthsData[key]) return;
+    deleteMonthKey = key;
+    disarmSheetDelete();
+    const count = monthsData[key].length;
+    const pending = syncQueue.filter((it) => it.monthKey === key).length + rejectedItems.filter((r) => r.item.monthKey === key).length;
+    document.getElementById("deleteMonthTitle").textContent = "Xoá " + monthLabel(key);
+    document.getElementById("deleteMonthInfo").textContent = "Tháng này có " + count + " khoản chi trên máy.";
+    const localTitle = document.getElementById("deleteMonthLocalTitle");
+    const localSub = document.getElementById("deleteMonthLocalSub");
+    if(!SHEET_SYNC_URL){
+      // Chưa bật đồng bộ: chỉ có dữ liệu trên máy, xoá là mất hẳn.
+      deleteMonthSheetBtn.style.display = "none";
+      deleteMonthLocalBtn.classList.add("danger");
+      deleteMonthLocalBtn.disabled = false;
+      localTitle.textContent = "Xoá tháng này";
+      localSub.textContent = "Xoá toàn bộ " + count + " khoản chi trên máy. Không thể hoàn tác.";
+      deleteMonthNote.style.display = "none";
+    }else{
+      deleteMonthSheetBtn.style.display = "";
+      deleteMonthLocalBtn.classList.remove("danger");
+      localTitle.textContent = "Chỉ xoá trên máy này";
+      const onlyMonth = Object.keys(monthsData).length <= 1;
+      deleteMonthLocalBtn.disabled = onlyMonth;
+      localSub.textContent = onlyMonth
+        ? "Đây là tháng duy nhất trên máy nên không xoá riêng được. Muốn dọn máy, dùng Menu ⋮ → Đăng xuất và xoá dữ liệu trên máy."
+        : "Giữ nguyên trên Google Sheet. Tải lại được bằng ＋ Thêm tháng.";
+      if(pending){
+        deleteMonthNote.textContent = "Còn " + pending + " thay đổi của tháng này chưa gửi lên Sheet. Nếu chỉ xoá trên máy, chúng vẫn được gửi lên Sheet sau. Nếu xoá cả trên Sheet, chúng bị bỏ.";
+        deleteMonthNote.style.display = "";
+      }else{
+        deleteMonthNote.style.display = "none";
+      }
+    }
+    deleteMonthOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeDeleteMonth(){
+    disarmSheetDelete();
+    deleteMonthOverlay.classList.remove("show");
+    deleteMonthKey = null;
+    resumeParticleBg();
+  }
+  function deleteMonth(key){ openDeleteMonth(key); }
+  deleteMonthLocalBtn.addEventListener("click", () => {
+    const key = deleteMonthKey;
+    if(!key || deleteMonthLocalBtn.disabled) return;
+    const label = monthLabel(key);
+    closeDeleteMonth();
+    removeMonthLocally(key);
+    // Không đụng tới Sheet và KHÔNG bỏ các thay đổi đang chờ gửi (chúng vẫn được gửi lên Sheet, không mất gì).
+    if(SHEET_SYNC_URL){
+      flashSyncStatus("Đã xoá " + label + " trên máy (vẫn còn trên Google Sheet)", 5000);
+    }
+  });
+  // Xoá cả trên Sheet là thao tác không hoàn tác được -> bấm 2 lần (lần 1 chỉ đổi nhãn, tự hoàn lại sau 4 giây).
+  deleteMonthSheetBtn.addEventListener("click", () => {
+    const key = deleteMonthKey;
+    if(!key) return;
+    if(!deleteMonthSheetBtn.classList.contains("armed")){
+      deleteMonthSheetBtn.classList.add("armed");
+      document.getElementById("deleteMonthSheetTitle").textContent = "Bấm lần nữa để xoá vĩnh viễn";
+      deleteArmTimer = setTimeout(disarmSheetDelete, 4000);
+      return;
+    }
+    closeDeleteMonth();
+    removeMonthLocally(key);
+    // Lệnh xoá đi qua hàng đợi chung: bỏ các thay đổi chưa gửi của tháng này, gửi đúng thứ tự, mất mạng thì tự thử lại.
+    queueDeleteMonth(key);
+  });
+  document.getElementById("deleteMonthCancel").addEventListener("click", closeDeleteMonth);
+  deleteMonthOverlay.addEventListener("click", (e) => { if(e.target === deleteMonthOverlay) closeDeleteMonth(); });
   let ymDisplayYear = null;
   const YM_YEAR_MIN = new Date().getFullYear() - 2;
   const YM_YEAR_MAX = new Date().getFullYear() + 2;
@@ -2894,8 +2971,7 @@
     if(done.length === 1){
       switchMonth(done[0], { skipPull: true }); // vừa tải xong nên không cần tải lại lần nữa
     }else{
-      setSyncStatus("Đã tải " + done.length + " tháng từ Google Sheet: " + done.map(monthLabel).join(", "), false);
-      setTimeout(refreshSyncStatus, 5000);
+      flashSyncStatus("Đã tải " + done.length + " tháng từ Google Sheet: " + done.map(monthLabel).join(", "), 5000);
     }
   }
   document.getElementById("addMonthBtn").addEventListener("click", openMonthLoad);
