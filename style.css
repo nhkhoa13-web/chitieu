@@ -490,7 +490,9 @@
   .card-head-toggle.open .chev{ transform:rotate(180deg); }
   .card-title{ font-family:var(--serif); font-size:18px; font-weight:600; margin:0; color:var(--text-hi); }
   .stats-body{ display:none; }
-  .stats-body.show{ display:block; overflow-x:clip; }
+  /* overflow-x:clip cắt đúng mép khối, làm mất bo góc/viền của dòng "Cao nhất" (nó lấn ra ngoài 10px bằng margin âm).
+     -> nới vùng cắt thêm 12px mỗi bên (padding) và kéo lại bằng margin âm: nội dung giữ nguyên vị trí, không bị cắt vuông. */
+  .stats-body.show{ display:block; overflow-x:clip; margin:0 -12px; padding:0 12px; }
   /* Khi thu gọn "Chi tiêu theo ngày" -> vẫn hiện dòng "Ngày chi nhiều nhất" ngay dưới tiêu đề */
   .peak-caption-collapsed{ display:none; }
   .card-head-toggle:not(.open) + .peak-caption-collapsed{ display:block; }
