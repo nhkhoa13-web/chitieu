@@ -336,11 +336,26 @@
 
     <section class="card">
       <button type="button" class="card-head card-head-toggle" id="statsToggle">
-        <h2 class="card-title">Chi tiêu theo ngày</h2>
+        <h2 class="card-title" id="chartTitle">Chi tiêu theo tuần</h2>
         <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <div id="peakCaptionCollapsed" class="peak-caption-collapsed"></div>
       <div class="stats-body" id="statsBody">
+        <div class="chart-mode" role="group" aria-label="Kiểu xem biểu đồ">
+          <button type="button" class="chart-mode-btn active" data-mode="week" aria-pressed="true">Theo tuần</button>
+          <button type="button" class="chart-mode-btn" data-mode="day" aria-pressed="false">Theo ngày</button>
+        </div>
+        <div class="week-pager" id="weekPager">
+          <button type="button" class="week-nav" id="weekPrev" aria-label="Tuần trước">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button type="button" class="week-pager-title" id="weekTitle" aria-label="Xem chi tiết cả tuần">
+            <b></b><small></small>
+          </button>
+          <button type="button" class="week-nav" id="weekNext" aria-label="Tuần sau">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
         <div class="day-chart" id="dayChart"></div>
         <div id="peakCaption"></div>
         <h3 class="card-subtitle">Theo loại chi tiêu</h3>

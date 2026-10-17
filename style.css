@@ -490,7 +490,7 @@
   .card-head-toggle.open .chev{ transform:rotate(180deg); }
   .card-title{ font-family:var(--serif); font-size:18px; font-weight:600; margin:0; color:var(--text-hi); }
   .stats-body{ display:none; }
-  .stats-body.show{ display:block; }
+  .stats-body.show{ display:block; overflow-x:clip; }
   /* Khi thu gọn "Chi tiêu theo ngày" -> vẫn hiện dòng "Ngày chi nhiều nhất" ngay dưới tiêu đề */
   .peak-caption-collapsed{ display:none; }
   .card-head-toggle:not(.open) + .peak-caption-collapsed{ display:block; }
@@ -585,6 +585,32 @@
   .day-col:hover .day-bar{ filter:brightness(1.25); }
   .day-bar{ width:100%; background:linear-gradient(180deg,var(--chong-soft),var(--chong)); border-radius:3px 3px 0 0; min-height:3px; transition:filter .12s ease, height .5s ease, opacity .3s ease; }
   .day-tick{ position:absolute; bottom:-18px; font-size:9.5px; color:var(--text-faint); }
+
+  /* chuyển kiểu xem: theo tuần / theo ngày */
+  .chart-mode{ display:inline-flex; gap:2px; padding:3px; margin-bottom:14px; background:var(--surface3); border:1px solid var(--border); border-radius:10px; }
+  .chart-mode-btn{ border:none; background:transparent; color:var(--text-muted); font-family:inherit; font-size:12px; font-weight:600; padding:6px 14px; border-radius:7px; cursor:pointer; transition:background .15s ease, color .15s ease; }
+  .chart-mode-btn.active{ background:var(--surface2); color:var(--chong-soft); box-shadow:0 0 0 1px var(--border2); }
+  /* biểu đồ theo tuần: xem MỖI LẦN 1 tuần (T2..CN, kèm ngày), mũi tên để chuyển tuần */
+  .week-pager{ display:flex; align-items:center; gap:8px; margin-bottom:16px; }
+  .week-pager[hidden]{ display:none; }
+  .week-nav{ flex:none; width:40px; height:40px; display:grid; place-items:center; border-radius:11px; border:1px solid var(--border2); background:var(--surface3); color:var(--chong-soft); cursor:pointer; transition:background .15s ease, opacity .15s ease, transform .1s ease; }
+  .week-nav svg{ width:18px; height:18px; }
+  .week-nav:active:not(:disabled){ transform:scale(.94); }
+  .week-nav:disabled{ opacity:.28; cursor:default; }
+  .week-pager-title{ flex:1; min-width:0; padding:6px 10px; border-radius:11px; border:1px solid var(--border); background:var(--surface3); color:var(--text-hi); font-family:inherit; text-align:center; line-height:1.3; cursor:pointer; }
+  .week-pager-title b{ display:block; font-size:14px; }
+  .week-pager-title small{ display:block; font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .day-chart.week-mode{ gap:8px; height:120px; margin-bottom:34px; touch-action:pan-y; }
+  .day-chart.week-mode .day-col{ min-width:0; }
+  .day-chart.week-mode .day-col.empty{ pointer-events:none; }
+  .day-chart.week-mode .day-col.empty .day-bar{ opacity:0 !important; }
+  .day-chart.week-mode .day-bar{ border-radius:6px 6px 0 0; }
+  .col-amt{ position:absolute; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:10px; color:var(--text-muted); white-space:nowrap; pointer-events:none; transition:bottom .5s ease; }
+  /* dưới mỗi cột chỉ hiện thứ (T2..CN) */
+  .col-tick{ position:absolute; left:-4px; right:-4px; bottom:-24px; text-align:center; line-height:1.3; white-space:nowrap; pointer-events:none; }
+  .col-tick span{ font-size:11px; font-weight:600; color:var(--text-muted); }
+  .day-col.empty .col-tick{ opacity:.3; }
+  .day-col.is-now .col-tick span{ color:var(--chong-soft); font-weight:700; }
 
   /* ledger table */
   .t-row{
@@ -870,6 +896,7 @@
     .scale-pivot-cap,.scale-orbit,.scale-orbit2,.scale-taiji,.scale-taiji-glow{ animation:none !important; }
     .cat-bar-fill{ transition:none; }
     .day-bar{ transition:filter .12s ease; }
+    .col-amt{ transition:none; }
     .hud-clock-dot{ animation:none; }
   }
 
@@ -895,6 +922,7 @@
     .card-title{ font-size:16.5px; }
     .cat-grid{ grid-template-columns:1fr; gap:12px; }
     .day-chart{ height:74px; }
+    .day-chart.week-mode{ height:100px; gap:6px; }
     .hero-stats{ gap:20px; }
     #addBtn{ flex:1 1 100%; justify-content:center; padding:11px 14px; }
     .modal{ padding:18px; gap:12px; }

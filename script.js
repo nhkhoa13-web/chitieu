@@ -1051,49 +1051,255 @@
     });
   }
 
+  // ---------- Biểu đồ chi tiêu: theo TUẦN (mặc định) hoặc theo NGÀY ----------
+  // Tuần tính từ Thứ 2 đến Chủ nhật (khớp lịch chọn ngày): tuần đầu và tuần cuối của tháng có thể ngắn hơn 7 ngày.
+  const CHART_MODE_KEY = "so_chi_tieu:chart_mode"; // "week" | "day"
+  let chartMode = (function(){
+    try{ return localStorage.getItem(CHART_MODE_KEY) === "day" ? "day" : "week"; }catch(e){ return "week"; }
+  })();
+  function setChartMode(mode){
+    chartMode = mode === "day" ? "day" : "week";
+    try{ localStorage.setItem(CHART_MODE_KEY, chartMode); }catch(e){ /* ignore */ }
+    renderDayChart();
+  }
+  // Số tiền đang lưu theo đơn vị nghìn đồng -> rút gọn cho nhãn trên cột (vd. 850k, 1,2tr).
+  function compactMoney(thousands){
+    const v = Number(thousands) || 0;
+    if(v <= 0) return "";
+    if(v >= 1000) return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(v / 1000) + "tr";
+    return Math.round(v) + "k";
+  }
+  function monthWeekInfo(monthKey){
+    const total = daysInMonthKey(monthKey);
+    const parts = String(monthKey).split("-");
+    const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    const dow = (y && m) ? new Date(y, m - 1, 1).getDay() : 1; // 0=CN..6=T7
+    const lead = (dow + 6) % 7;                                // số ô trống trước ngày 1 (Thứ 2 = 0)
+    const weeks = Math.ceil((total + lead) / 7);
+    const ranges = [];
+    for(let w = 0; w < weeks; w++){
+      ranges.push({ start: Math.max(1, w * 7 - lead + 1), end: Math.min(total, (w + 1) * 7 - lead) });
+    }
+    return { total, weeks, lead, ranges, weekOf: (d) => Math.min(weeks - 1, Math.floor((d - 1 + lead) / 7)) };
+  }
+  const weekRangeLabel = (r) => r.start === r.end ? String(r.start) : r.start + "–" + r.end;
+  // Ngày lạc ngoài tháng (vd. nhập file có "ngày 31" cho tháng 30 ngày) được gộp vào ngày cuối để tổng biểu đồ luôn khớp tổng tháng.
+  const clampDayToMonth = (d, total) => Math.min(total, Math.max(1, Number(d) || 1));
+
+  function setPeakCaption(html){
+    document.getElementById("peakCaption").innerHTML = html;
+    document.getElementById("peakCaptionCollapsed").innerHTML = html;
+  }
+  function peakCaptionHtml(label, boldText, amount){
+    return '<div class="peak-caption">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 11-13h-8z"/></svg>' +
+      label + ' <b>' + boldText + '</b> · ' + money(amount) +
+    '</div>';
+  }
+  function isRealCurrentMonthKey(key){
+    const now = new Date();
+    const parts = String(key).split("-");
+    return now.getFullYear() === parseInt(parts[0], 10) && (now.getMonth() + 1) === parseInt(parts[1], 10);
+  }
+
   function renderDayChart(){
+    const title = document.getElementById("chartTitle");
+    if(title) title.textContent = chartMode === "week" ? "Chi tiêu theo tuần" : "Chi tiêu theo ngày";
+    document.querySelectorAll(".chart-mode-btn").forEach(btn => {
+      const on = btn.dataset.mode === chartMode;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    document.getElementById("weekPager").hidden = chartMode !== "week";
+    if(chartMode === "week") renderWeekChart(); else renderDailyChart();
+  }
+
+  const WEEKDAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+  // Biểu đồ theo tuần xem MỖI LẦN 1 tuần: 7 cột Thứ 2 -> Chủ nhật, dưới mỗi cột là thứ + số ngày.
+  // Ô ngoài tháng (tuần đầu/cuối) để mờ. Mặc định mở tuần chứa hôm nay (nếu đang xem tháng hiện tại), không thì Tuần 1.
+  let chartWeek = null, chartWeekMonth = null; // tuần đang xem (0 = Tuần 1) và tháng của nó
+  function ensureChartWeek(info){
+    if(chartWeek === null || chartWeekMonth !== currentMonthKey){
+      chartWeekMonth = currentMonthKey;
+      chartWeek = isRealCurrentMonthKey(currentMonthKey) ? info.weekOf(new Date().getDate()) : 0;
+    }
+    chartWeek = Math.min(info.weeks - 1, Math.max(0, chartWeek));
+    return chartWeek;
+  }
+  // Hiệu ứng chuyển tuần: cả biểu đồ trượt vào theo hướng bấm, các cột mọc lên lần lượt (nảy nhẹ), số tiền bay theo đỉnh cột,
+  // tiêu đề trượt đổi chữ, cột cao nhất loé sáng. Tự tắt khi bật "giảm chuyển động" hoặc chế độ Tiết kiệm pin.
+  let chartAnimDir = null;   // null = cập nhật tại chỗ; -1/1 = hướng chuyển tuần; 0 = hiện ra không trượt (đổi tháng/kiểu xem)
+  let chartSlideAnim = null;
+  const chartAnimOk = () =>
+    !prefersReducedMotion() &&
+    document.documentElement.getAttribute("data-perf") !== "lite" &&
+    typeof Element.prototype.animate === "function";
+  function shiftChartWeek(delta){
+    if(chartMode !== "week") return;
+    const info = monthWeekInfo(currentMonthKey);
+    ensureChartWeek(info);
+    const next = Math.min(info.weeks - 1, Math.max(0, chartWeek + delta));
+    if(next === chartWeek) return;
+    chartWeek = next;
+    chartAnimDir = delta > 0 ? 1 : -1;
+    renderDayChart();
+  }
+
+  function renderWeekChart(){
+    const info = monthWeekInfo(currentMonthKey);
+    const w = ensureChartWeek(info);
+    const daySums = {};
+    entries.forEach(e => {
+      const d = clampDayToMonth(e.day, info.total);
+      daySums[d] = (daySums[d] || 0) + Number(e.amount || 0);
+    });
+    const dayMax = Math.max(1, ...Object.values(daySums));   // thang chiều cao chung cả tháng -> lật qua các tuần vẫn so sánh được
+    const weekSums = new Array(info.weeks).fill(0);
+    for(let d = 1; d <= info.total; d++) weekSums[info.weekOf(d)] += daySums[d] || 0;
+    const weekMax = Math.max(...weekSums);
+    const isPeakWeek = weekSums[w] > 0 && weekSums[w] === weekMax;
+
+    const chart = document.getElementById("dayChart");
+    const key = "week:" + currentMonthKey;
+    let rebuilt = false;
+    if(chart.dataset.key !== key){ // đổi tháng hoặc đổi kiểu xem -> dựng lại 7 cột (chuyển tuần chỉ cập nhật tại chỗ nên cột "mọc" mượt)
+      rebuilt = true;
+      chart.dataset.key = key;
+      chart.classList.add("week-mode");
+      let html = "";
+      for(let k = 0; k < 7; k++){
+        html += '<div class="day-col" role="button"><span class="col-amt"></span>' +
+                '<div class="day-bar" style="height:3%;opacity:0.18"></div>' +
+                '<div class="col-tick"><span></span></div></div>';
+      }
+      chart.innerHTML = html;
+    }
+    const todayD = isRealCurrentMonthKey(currentMonthKey) ? new Date().getDate() : -1;
+    let dir = chartAnimDir; chartAnimDir = null;
+    const animate = chartAnimOk() && (dir !== null || rebuilt);
+    if(dir === null) dir = 0;
+    if(animate){ // đưa mọi cột về vạch 0 (không transition) rồi mới cho mọc lên đúng giá trị
+      if(chartSlideAnim){ chartSlideAnim.cancel(); chartSlideAnim = null; }
+      for(let k = 0; k < 7; k++){
+        const b0 = chart.children[k].querySelector(".day-bar"), a0 = chart.children[k].querySelector(".col-amt");
+        b0.style.transition = "none"; b0.style.height = "3%";
+        a0.style.transition = "none"; a0.style.opacity = "0"; a0.style.bottom = "3%";
+      }
+      void chart.offsetWidth; // chốt trạng thái đầu trước khi gán giá trị cuối
+    }
+    let peakK = -1, peakAmt = 0;
+    for(let k = 0; k < 7; k++){
+      const col = chart.children[k];
+      const d = w * 7 - info.lead + k + 1;
+      const valid = d >= 1 && d <= info.total;
+      col.classList.toggle("empty", !valid);
+      col.classList.toggle("is-now", valid && d === todayD);
+      col.querySelector(".col-tick span").textContent = WEEKDAY_SHORT[k];
+      const bar = col.querySelector(".day-bar");
+      const amtEl = col.querySelector(".col-amt");
+      bar.classList.remove("peak");
+      if(!valid){
+        delete col.dataset.day;
+        col.removeAttribute("title"); col.removeAttribute("aria-label");
+        bar.style.height = "3%"; amtEl.textContent = ""; amtEl.style.bottom = "3%";
+        if(!animate){ bar.style.transition = ""; amtEl.style.transition = ""; amtEl.style.opacity = ""; }
+        continue;
+      }
+      col.dataset.day = String(d);
+      const amt = daySums[d] || 0;
+      const pct = amt ? Math.max(3, amt / dayMax * 78) : 3; // chừa chỗ phía trên cho nhãn số tiền
+      const label = WEEKDAY_SHORT[k] + " · Ngày " + d + ": " + money(amt);
+      col.title = label;
+      col.setAttribute("aria-label", label);
+      bar.style.height = pct + "%";
+      bar.style.opacity = amt ? 1 : 0.18;
+      amtEl.textContent = compactMoney(amt);
+      amtEl.style.bottom = "calc(" + pct + "% + 3px)";
+      if(animate){
+        const delay = k * 45; // các cột mọc lần lượt từ T2 đến CN
+        bar.style.transition = "height .62s cubic-bezier(.34,1.45,.64,1) " + delay + "ms, opacity .35s ease " + delay + "ms, filter .12s ease";
+        amtEl.style.transition = "bottom .62s cubic-bezier(.34,1.45,.64,1) " + delay + "ms, opacity .35s ease " + (delay + 200) + "ms";
+        amtEl.style.opacity = amt ? "1" : "0";
+      } else {
+        bar.style.transition = ""; amtEl.style.transition = ""; amtEl.style.opacity = "";
+      }
+      if(amt > peakAmt){ peakAmt = amt; peakK = k; }
+    }
+    if(peakK >= 0) chart.children[peakK].querySelector(".day-bar").classList.add("peak");
+
+    // thanh chuyển tuần
+    const pager = document.getElementById("weekPager");
+    pager.hidden = false;
+    document.getElementById("weekPrev").disabled = w <= 0;
+    document.getElementById("weekNext").disabled = w >= info.weeks - 1;
+    const titleBtn = document.getElementById("weekTitle");
+    titleBtn.querySelector("b").textContent = "Tuần " + (w + 1) + " / " + info.weeks;
+    titleBtn.querySelector("small").textContent = "Ngày " + weekRangeLabel(info.ranges[w]) + " · " + money(weekSums[w]) + (isPeakWeek ? " · cao nhất tháng" : "");
+
+    if(animate){
+      const ease = "cubic-bezier(.22,1,.36,1)";
+      chartSlideAnim = chart.animate(
+        [{ transform: "translateX(" + (dir * 26) + "px)", opacity: 0.15 }, { transform: "translateX(0)", opacity: 1 }],
+        { duration: 380, easing: ease }
+      );
+      titleBtn.querySelectorAll("b, small").forEach((el, i) => el.animate(
+        [{ opacity: 0, transform: dir ? "translateX(" + (dir * 18) + "px)" : "translateY(5px)" }, { opacity: 1, transform: "none" }],
+        { duration: 300, delay: i * 50, easing: ease, fill: "backwards" }
+      ));
+      if(peakK >= 0){ // cột cao nhất loé sáng sau khi mọc xong
+        chart.children[peakK].querySelector(".day-bar").animate(
+          [{ filter: "brightness(1.75)" }, { filter: "brightness(1)" }],
+          { duration: 850, delay: peakK * 45 + 380, easing: "ease-out" }
+        );
+      }
+    }
+
+    if(peakK >= 0){
+      const pd = w * 7 - info.lead + peakK + 1;
+      setPeakCaption(peakCaptionHtml("Ngày chi nhiều nhất:", "Ngày " + pd, peakAmt));
+    } else {
+      setPeakCaption("");
+    }
+  }
+
+  function renderDailyChart(){
+    const total = daysInMonthKey(currentMonthKey); // 28–31 ngày tuỳ tháng, không còn cố định 31 cột
     const map = {};
-    entries.forEach(e => { map[e.day] = (map[e.day]||0) + Number(e.amount||0); });
+    entries.forEach(e => {
+      const d = clampDayToMonth(e.day, total);
+      map[d] = (map[d] || 0) + Number(e.amount || 0);
+    });
     const max = Math.max(1, ...Object.values(map));
     let peakDay = null;
     Object.entries(map).forEach(([d, v]) => { if(v === max && v > 0) peakDay = Number(d); });
+
     const chart = document.getElementById("dayChart");
-    if(chart.children.length !== 31){
+    const key = "day:" + total;
+    if(chart.dataset.key !== key){
+      chart.dataset.key = key;
+      chart.classList.remove("week-mode");
       let html = "";
-      for(let d=1; d<=31; d++){
-        html += '<div class="day-col" data-day="' + d + '">' +
+      for(let d = 1; d <= total; d++){
+        html += '<div class="day-col" data-day="' + d + '" role="button">' +
                   '<div class="day-bar" style="height:3%;opacity:0.18"></div>' +
                   (d % 5 === 0 ? '<div class="day-tick">' + d + '</div>' : '') +
                 '</div>';
       }
       chart.innerHTML = html;
     }
-    for(let d=1; d<=31; d++){
+    for(let d = 1; d <= total; d++){
       const amt = map[d] || 0;
-      const pct = amt/max*100;
-      const isPeak = d === peakDay;
-      const col = chart.children[d-1];
-      col.title = "Ngày " + d + ": " + money(amt);
+      const pct = amt / max * 100;
+      const col = chart.children[d - 1];
+      const label = "Ngày " + d + ": " + money(amt);
+      col.title = label;
+      col.setAttribute("aria-label", label);
       const bar = col.querySelector(".day-bar");
-      bar.style.height = Math.max(3,pct) + "%";
+      bar.style.height = Math.max(3, pct) + "%";
       bar.style.opacity = amt ? 1 : 0.18;
-      bar.classList.toggle("peak", isPeak);
+      bar.classList.toggle("peak", d === peakDay);
     }
-
-    const caption = document.getElementById("peakCaption");
-    const captionCollapsed = document.getElementById("peakCaptionCollapsed");
-    if(peakDay){
-      const captionHtml =
-        '<div class="peak-caption">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 11-13h-8z"/></svg>' +
-          'Ngày chi nhiều nhất: <b>Ngày ' + peakDay + '</b> · ' + money(max) +
-        '</div>';
-      caption.innerHTML = captionHtml;
-      captionCollapsed.innerHTML = captionHtml;
-    }else{
-      caption.innerHTML = "";
-      captionCollapsed.innerHTML = "";
-    }
+    setPeakCaption(peakDay ? peakCaptionHtml("Ngày chi nhiều nhất:", "Ngày " + peakDay, max) : "");
   }
 
   let ledgerFilterText = "";
@@ -1415,6 +1621,7 @@
   const catDetailPrevBtn = document.getElementById("catDetailPrev");
   const catDetailNextBtn = document.getElementById("catDetailNext");
   let currentDetailDay = null; // null khi đang xem theo danh mục; là số ngày khi đang xem theo ngày
+  let currentDetailWeek = null; // số thứ tự tuần (0 = Tuần 1) khi đang xem chi tiết theo tuần; null nếu không
 
   function openEntryDetail(title, dotColor, rows, calc, showCat, showDay){
     const sorted = rows.slice().sort((a,b) => a.day - b.day || String(a.id).localeCompare(String(b.id)));
@@ -1464,6 +1671,7 @@
     const cat = catById[catId];
     if(!cat) return;
     currentDetailDay = null;
+    currentDetailWeek = null;
     catDetailPrevBtn.style.display = "none";
     catDetailNextBtn.style.display = "none";
     const personLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
@@ -1474,14 +1682,34 @@
   function openDayDetail(day){
     const total = daysInMonthKey(currentMonthKey);
     currentDetailDay = Math.min(total, Math.max(1, Number(day)));
+    currentDetailWeek = null;
     catDetailPrevBtn.style.display = "";
     catDetailNextBtn.style.display = "";
     catDetailPrevBtn.disabled = currentDetailDay <= 1;
     catDetailNextBtn.disabled = currentDetailDay >= total;
     openEntryDetail("Ngày " + currentDetailDay, null, entries.filter(e => Number(e.day) === currentDetailDay), null, true, false);
   }
-  catDetailPrevBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay - 1); });
-  catDetailNextBtn.addEventListener("click", () => { if(currentDetailDay !== null) openDayDetail(currentDetailDay + 1); });
+  // Xem chi tiết 1 tuần của tháng (bấm vào cột trong biểu đồ theo tuần); nút trước/sau chuyển sang tuần kề.
+  function openWeekDetail(week){
+    const info = monthWeekInfo(currentMonthKey);
+    currentDetailWeek = Math.min(info.weeks - 1, Math.max(0, Number(week) || 0));
+    currentDetailDay = null;
+    catDetailPrevBtn.style.display = "";
+    catDetailNextBtn.style.display = "";
+    catDetailPrevBtn.disabled = currentDetailWeek <= 0;
+    catDetailNextBtn.disabled = currentDetailWeek >= info.weeks - 1;
+    const w = currentDetailWeek;
+    const rows = entries.filter(e => info.weekOf(clampDayToMonth(e.day, info.total)) === w);
+    openEntryDetail("Tuần " + (w + 1) + " · ngày " + weekRangeLabel(info.ranges[w]), null, rows, null, true, true);
+  }
+  catDetailPrevBtn.addEventListener("click", () => {
+    if(currentDetailWeek !== null) openWeekDetail(currentDetailWeek - 1);
+    else if(currentDetailDay !== null) openDayDetail(currentDetailDay - 1);
+  });
+  catDetailNextBtn.addEventListener("click", () => {
+    if(currentDetailWeek !== null) openWeekDetail(currentDetailWeek + 1);
+    else if(currentDetailDay !== null) openDayDetail(currentDetailDay + 1);
+  });
   function closeCatDetail(){ catDetailOverlay.classList.remove("show"); resumeParticleBg(); }
   document.getElementById("catGrid").addEventListener("click", (e) => {
     const item = e.target.closest(".cat-item");
@@ -1489,10 +1717,30 @@
     openCatDetail(item.dataset.cat);
   });
   document.getElementById("dayChart").addEventListener("click", (e) => {
-    const col = e.target.closest(".day-col");
-    if(!col || !col.dataset.day) return;
-    openDayDetail(col.dataset.day);
+    const dayCol = e.target.closest(".day-col[data-day]");
+    if(dayCol) openDayDetail(dayCol.dataset.day);               // bấm 1 cột = chi tiết ngày đó
   });
+  document.querySelectorAll(".chart-mode-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setChartMode(btn.dataset.mode));
+  });
+  document.getElementById("weekPrev").addEventListener("click", () => shiftChartWeek(-1));
+  document.getElementById("weekNext").addEventListener("click", () => shiftChartWeek(1));
+  document.getElementById("weekTitle").addEventListener("click", () => { if(chartWeek !== null) openWeekDetail(chartWeek); });
+  (function(){ // vuốt ngang trên biểu đồ để chuyển tuần
+    const chartEl = document.getElementById("dayChart");
+    let sx = 0, sy = 0, tracking = false;
+    chartEl.addEventListener("touchstart", (e) => {
+      if(chartMode !== "week" || e.touches.length !== 1) return;
+      tracking = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    }, { passive: true });
+    chartEl.addEventListener("touchend", (e) => {
+      if(!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if(Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftChartWeek(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
   document.getElementById("closeCatDetail").addEventListener("click", closeCatDetail);
   document.getElementById("catDetailCloseBtn").addEventListener("click", closeCatDetail);
   catDetailOverlay.addEventListener("click", (e) => { if(e.target === catDetailOverlay) closeCatDetail(); });
