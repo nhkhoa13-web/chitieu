@@ -161,9 +161,11 @@
           <div class="menu-panel" id="menuPanel">
             <div class="menu-account" id="menuAccount" role="button" tabindex="0" aria-expanded="false" aria-controls="menuAccountMail" title="Bấm để xem / ẩn email" style="cursor:pointer;">
               <span class="menu-account-avatar" id="menuAccountAvatar"></span>
-              <span class="menu-account-email" id="menuAccountEmail">—</span>
+              <span id="menuAccountText" style="display:flex;flex-direction:column;justify-content:center;min-width:0;flex:1;line-height:12px;">
+                <span class="menu-account-email" id="menuAccountEmail">—</span>
+                <span id="menuAccountMail" hidden style="font-size:9.5px;line-height:11px;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+              </span>
             </div>
-            <div class="menu-account-mail" id="menuAccountMail" hidden style="padding:0 8px 6px 40px;font-size:11.5px;line-height:1.4;color:var(--text-mid);word-break:break-all;user-select:text;-webkit-user-select:text;"></div>
             <div class="menu-divider"></div>
             <button type="button" class="menu-item" id="exportBtn">
               <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg></span>

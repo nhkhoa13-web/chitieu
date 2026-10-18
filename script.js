@@ -1316,7 +1316,7 @@
 
     if(peakK >= 0){
       const pd = w * 7 - info.lead + peakK + 1;
-      setPeakCaption(peakCaptionHtml("Ngày chi nhiều nhất tuần:", "Ngày " + pd, peakAmt));
+      setPeakCaption(peakCaptionHtml("Chi tiêu nhiều nhất tuần:", weekdayShortLabel(currentMonthKey, pd) + " · Ngày " + pd, peakAmt));
     } else {
       setPeakCaption("");
     }
@@ -1359,7 +1359,7 @@
       bar.style.opacity = amt ? 1 : 0.18;
       bar.classList.toggle("peak", d === peakDay);
     }
-    setPeakCaption(peakDay ? peakCaptionHtml("Ngày chi nhiều nhất tháng:", "Ngày " + peakDay, max) : "");
+    setPeakCaption(peakDay ? peakCaptionHtml("Chi tiêu nhiều nhất tháng:", weekdayShortLabel(currentMonthKey, peakDay) + " · Ngày " + peakDay, max) : "");
   }
 
   let ledgerFilterText = "";
