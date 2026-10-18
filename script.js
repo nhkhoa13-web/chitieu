@@ -21,18 +21,78 @@
     }
   }
 
-  function showErrorBanner(msg){
-    let b = document.getElementById("jsErrorBanner");
-    if(!b){
-      b = document.createElement("div");
-      b.id = "jsErrorBanner";
-      b.style.cssText = "position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:9px 14px;font:12px/1.4 monospace;z-index:9999;white-space:pre-wrap;";
-      document.body.appendChild(b);
+  // ---------- Thông báo (toast) ----------
+  // showNotice(msg)      : thông báo cho NGƯỜI DÙNG (nhập thiếu, mất mạng, chưa cấu hình...) — tự ẩn sau 5 giây.
+  // showErrorBanner(msg) : lỗi bất ngờ của code — tự ẩn sau 9 giây, ghi thêm vào console để dễ tra cứu.
+  // Cả hai đều có nút ✕, xếp chồng tối đa 3 thông báo, cùng nội dung thì chỉ hiện 1 (và tính lại giờ).
+  const TOAST_MAX = 3;
+  function toastHost(){
+    let h = document.getElementById("toastHost");
+    if(!h){
+      h = document.createElement("div");
+      h.id = "toastHost";
+      h.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top, 0px)) 12px 0;pointer-events:none;";
+      document.body.appendChild(h);
     }
-    b.textContent = "Lỗi JS: " + msg;
+    return h;
   }
-  window.addEventListener("error", (e) => showErrorBanner(e.message));
-  window.addEventListener("unhandledrejection", (e) => showErrorBanner(String(e.reason)));
+  function dismissToast(el){
+    if(!el || !el.parentNode) return;
+    clearTimeout(el._timer);
+    el.style.opacity = "0";
+    el.style.transform = "translateY(-6px)";
+    setTimeout(() => { if(el.parentNode) el.parentNode.removeChild(el); }, 180);
+  }
+  function showToast(msg, kind, ms){
+    const text = String(msg == null ? "" : msg).trim();
+    if(!text) return;
+    const host = toastHost();
+    const isError = kind === "error";
+    const existing = Array.prototype.find.call(host.children, (c) => c._text === text);
+    if(existing){
+      clearTimeout(existing._timer);
+      existing._timer = setTimeout(() => dismissToast(existing), ms);
+      return;
+    }
+    while(host.children.length >= TOAST_MAX) host.removeChild(host.firstChild);
+    const t = document.createElement("div");
+    t._text = text;
+    t.setAttribute("role", isError ? "alert" : "status");
+    const accent = isError ? "var(--vk-soft)" : "var(--gold)";
+    t.style.cssText = "pointer-events:auto;display:flex;align-items:flex-start;gap:10px;max-width:min(520px,100%);box-sizing:border-box;" +
+      "padding:10px 10px 10px 14px;border-radius:12px;background:var(--surface2);color:var(--text-hi);" +
+      "border:1px solid " + accent + ";border-left-width:4px;box-shadow:0 6px 24px rgba(0,0,0,.35);" +
+      "font:13px/1.45 var(--sans, sans-serif);opacity:0;transform:translateY(-6px);transition:opacity .18s ease,transform .18s ease;word-break:break-word;";
+    const span = document.createElement("span");
+    span.style.cssText = "flex:1;min-width:0;white-space:pre-wrap;";
+    span.textContent = (isError ? "Có lỗi xảy ra: " : "") + text;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.setAttribute("aria-label", "Đóng thông báo");
+    x.textContent = "\u2715";
+    x.style.cssText = "flex:none;border:0;background:transparent;color:var(--text-muted);font-size:15px;line-height:1;padding:4px 6px;cursor:pointer;border-radius:6px;";
+    x.addEventListener("click", () => dismissToast(t));
+    t.appendChild(span);
+    t.appendChild(x);
+    host.appendChild(t);
+    requestAnimationFrame(() => { t.style.opacity = "1"; t.style.transform = "none"; });
+    t._timer = setTimeout(() => dismissToast(t), ms);
+  }
+  function showNotice(msg){ showToast(msg, "notice", 5000); }
+  function showErrorBanner(msg){
+    console.error("app error:", msg);
+    showToast(msg, "error", 9000);
+  }
+  // Lỗi "ồn" của trình duyệt, không phải lỗi của app -> không làm phiền người dùng.
+  function isIgnorableError(text){
+    return /ResizeObserver loop|^Script error\.?$|AbortError|The user aborted a request|Load failed|Failed to fetch|NetworkError/i.test(String(text || ""));
+  }
+  window.addEventListener("error", (e) => { if(!isIgnorableError(e.message)) showErrorBanner(e.message); });
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    const text = (r && r.message) ? r.message : String(r);
+    if(!isIgnorableError(text) && !isIgnorableError(r && r.name)) showErrorBanner(text);
+  });
 
   // ---------- Category model ----------
   const CATS = [
@@ -140,7 +200,7 @@
     const label = document.getElementById("perfMenuLabel");
     let explicit = null;
     try{ explicit = localStorage.getItem(PERF_KEY); }catch(err){ /* ignore */ }
-    if(label) label.textContent = lite ? (explicit ? "Tiết kiệm pin: BẬT" : "Tiết kiệm pin: BẬT (tự động)") : "Tiết kiệm pin: tắt";
+    if(label) label.textContent = lite ? (explicit ? "Tiết kiệm pin: BẬT" : "Tiết kiệm pin: BẬT (tự động)") : "Tiết kiệm pin: TẮT";
     if(typeof window.__particleSetLite === "function") window.__particleSetLite(lite);
   }
   applyPerfMode(); // chạy sớm, trước khi nền hạt khởi động
@@ -748,7 +808,7 @@
   function pullMonth(monthKey, opts){
     opts = opts || {};
     if(!SHEET_SYNC_URL){
-      if(opts.manual) showErrorBanner("Chưa cấu hình SHEET_SYNC_URL. Xem hướng dẫn đồng bộ Google Sheet.");
+      if(opts.manual) showNotice("Chưa cấu hình SHEET_SYNC_URL. Xem hướng dẫn đồng bộ Google Sheet.");
       return Promise.resolve({ ok: false, kind: "fatal" });
     }
     return withSyncLock(() => pullMonthLocked(monthKey, opts));
@@ -757,7 +817,7 @@
     if(!signedIn()) return { ok: false, kind: "auth" };
     const drained = await drainQueue(); // gửi nốt thay đổi còn treo TRƯỚC khi tải
     if(!drained.ok){
-      if(opts.manual && drained.kind !== "auth") showErrorBanner("Chưa gửi hết thay đổi lên Sheet nên chưa tải được bản mới: " + ((lastSyncError && lastSyncError.message) || "lỗi kết nối"));
+      if(opts.manual && drained.kind !== "auth") showNotice("Chưa gửi hết thay đổi lên Sheet nên chưa tải được bản mới: " + ((lastSyncError && lastSyncError.message) || "lỗi kết nối"));
       return drained;
     }
     syncPhase = "pull";
@@ -782,7 +842,7 @@
         handleSyncAuthError({ authError: true, error: err.message });
       }else{
         lastSyncError = { kind: err.kind === "fatal" ? "fatal" : "network", message: err.message };
-        if(opts.manual) showErrorBanner("Đồng bộ Google Sheet thất bại: " + err.message);
+        if(opts.manual) showNotice("Đồng bộ Google Sheet thất bại: " + err.message);
       }
       console.warn("pull:", err.kind, err.message);
       return { ok: false, kind: err.kind };
@@ -2533,7 +2593,7 @@
       if(typeof XLSX === "undefined"){
         setSyncStatus("Đang tải thư viện Excel…", false);
         try{ await loadXlsx(); }
-        catch(err){ refreshSyncStatus(); showErrorBanner(EXCEL_LOAD_ERROR); return; }
+        catch(err){ refreshSyncStatus(); showNotice(EXCEL_LOAD_ERROR); return; }
         refreshSyncStatus();
       }
       openExportModal();
@@ -2637,8 +2697,8 @@
     try{
       const selectedMonths = Array.from(exportMonthList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value);
       const selectedCats = new Set(Array.from(exportCatList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value));
-      if(selectedMonths.length === 0){ showErrorBanner("Chọn ít nhất 1 tháng để xuất file."); return; }
-      if(selectedCats.size === 0){ showErrorBanner("Chọn ít nhất 1 danh mục để xuất file."); return; }
+      if(selectedMonths.length === 0){ showNotice("Chọn ít nhất 1 tháng để xuất file."); return; }
+      if(selectedCats.size === 0){ showNotice("Chọn ít nhất 1 danh mục để xuất file."); return; }
       let dayFrom = exportDayFrom.value.trim() === "" ? null : Math.max(1, Math.min(31, Number(exportDayFrom.value)));
       let dayTo = exportDayTo.value.trim() === "" ? null : Math.max(1, Math.min(31, Number(exportDayTo.value)));
       if(dayFrom !== null && dayTo !== null && dayFrom > dayTo){ const tmp = dayFrom; dayFrom = dayTo; dayTo = tmp; }
@@ -2760,7 +2820,7 @@
   document.getElementById("importPreviewConfirm").addEventListener("click", () => {
     if(!importPreviewData) return;
     const checkedBoxes = Array.from(importMonthList.querySelectorAll("input[type=checkbox]:checked"));
-    if(checkedBoxes.length === 0){ showErrorBanner("Chọn ít nhất 1 tháng để nhập."); return; }
+    if(checkedBoxes.length === 0){ showNotice("Chọn ít nhất 1 tháng để nhập."); return; }
     const selectedMonths = checkedBoxes.map(b => b.dataset.month);
     const mode = importPreviewMode;
     const { parsedMonths, stats } = importPreviewData;
@@ -2796,7 +2856,7 @@
         showVoiceToast(result.failed.length > 0, summary);
       });
     } else {
-      showErrorBanner("Chưa cấu hình Google Sheet — dữ liệu nhập chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
+      showNotice("Chưa cấu hình Google Sheet — dữ liệu nhập chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
       showVoiceToast(false,
         "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng (chỉ lưu tạm ở máy này)" +
         (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "")
@@ -2809,7 +2869,7 @@
     importFileInput.value = "";
     if(!file) return;
     try{ await loadXlsx(); }
-    catch(err){ showErrorBanner(EXCEL_LOAD_ERROR); return; }
+    catch(err){ showNotice(EXCEL_LOAD_ERROR); return; }
     const reader = new FileReader();
     reader.onload = () => {
       try{
@@ -2889,11 +2949,35 @@
   const menuPanel = document.getElementById("menuPanel");
   function closeMenuPanel(){
     menuPanel.classList.remove("show");
+    collapseAccountMail();
   }
   menuToggleBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     menuPanel.classList.toggle("show");
+    if(!menuPanel.classList.contains("show")) collapseAccountMail();
   });
+  // Bấm vào dòng tên (MR. KHOA) -> hiện email ngay bên dưới; bấm lần nữa -> ẩn. Đóng menu cũng tự ẩn.
+  function collapseAccountMail(){
+    const mail = document.getElementById("menuAccountMail");
+    const row = document.getElementById("menuAccount");
+    if(mail) mail.hidden = true;
+    if(row) row.setAttribute("aria-expanded", "false");
+  }
+  function toggleAccountMail(){
+    const mail = document.getElementById("menuAccountMail");
+    const row = document.getElementById("menuAccount");
+    if(!mail || !row) return;
+    mail.hidden = !mail.hidden;
+    row.setAttribute("aria-expanded", mail.hidden ? "false" : "true");
+  }
+  (function(){
+    const row = document.getElementById("menuAccount");
+    if(!row) return;
+    row.addEventListener("click", toggleAccountMail);
+    row.addEventListener("keydown", (e) => {
+      if(e.key === "Enter" || e.key === " "){ e.preventDefault(); toggleAccountMail(); }
+    });
+  })();
 
   // ---------- Day picker wiring ----------
   const dayTriggerBtn = document.getElementById("dayTrigger");
@@ -3541,14 +3625,36 @@
       return JSON.parse(json);
     }catch(err){ return null; }
   }
+  // Tên hiện ở đầu menu ⋮ (thay cho địa chỉ email). Mặc định "MR. KHOA".
+  // Muốn mỗi email một tên riêng, thêm vào config.js: DISPLAY_NAMES: { "email@gmail.com": "MRS. LAN" }
+  const DEFAULT_DISPLAY_NAME = "MR. KHOA";
+  function displayNameFor(email){
+    const map = APP_CONFIG.DISPLAY_NAMES;
+    const key = String(email || "").trim().toLowerCase();
+    if(map && typeof map === "object" && key){
+      for(const k in map){
+        if(Object.prototype.hasOwnProperty.call(map, k) && String(k).trim().toLowerCase() === key){
+          const v = String(map[k] || "").trim();
+          if(v) return v;
+        }
+      }
+    }
+    return DEFAULT_DISPLAY_NAME;
+  }
   function updateAccountUi(){
     const emailEl = document.getElementById("menuAccountEmail");
     const avatarEl = document.getElementById("menuAccountAvatar");
-    if(googleUserEmail){
-      emailEl.textContent = googleUserEmail;
-      avatarEl.textContent = googleUserEmail.slice(0, 1);
+    const mailEl = document.getElementById("menuAccountMail");
+    if(mailEl) mailEl.textContent = googleUserEmail || (GOOGLE_CLIENT_ID ? "Chưa đăng nhập" : "Chưa đăng nhập Google (chạy cục bộ)");
+    if(googleUserEmail || !GOOGLE_CLIENT_ID){
+      // Đã đăng nhập, hoặc app chạy cục bộ không cần đăng nhập -> hiện tên.
+      const name = displayNameFor(googleUserEmail);
+      emailEl.textContent = name;
+      emailEl.title = googleUserEmail || "";
+      avatarEl.textContent = name.replace(/^(mr|mrs|ms)\.?\s+/i, "").slice(0, 1) || name.slice(0, 1);
     }else{
       emailEl.textContent = "Chưa đăng nhập";
+      emailEl.title = "";
       avatarEl.textContent = "?";
     }
   }
@@ -3963,6 +4069,7 @@
     try{ sessionStorage.removeItem(OLD_AUTH_KEY); }catch(err){}
     if(!GOOGLE_CLIENT_ID){
       // Chưa cấu hình đăng nhập Google -> bỏ qua, chạy app bình thường (tương thích ngược).
+      updateAccountUi();
       loadData();
       return;
     }
@@ -4015,8 +4122,12 @@ function initParticleNetwork(){
   let targetFrameMs = 0; // 0 = không giới hạn (desktop chạy đúng tốc độ màn hình); di động sẽ đặt lại trong resize()
   let rafId = null;
   let running = false;
-  let lastTime = 0;
+  let lastTime = 0;   // mốc "lưới nhịp" để giới hạn fps (dịch lùi theo phần dư để nhịp đều)
+  let lastRender = 0; // thời điểm thật của khung vừa vẽ -> tính dt chính xác
+  let lastVw = 0, lastVh = 0;
+  let edgeZone = 40;  // bề dày vùng đệm mềm sát mép màn hình (px)
   let mouseX = -9999, mouseY = -9999; // để xa màn hình -> mặc định không có lực né nào cả
+  const coarsePointer = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
 
   // ---------- Màu theo theme (đọc từ CSS variables sẵn có của app) ----------
   // Chỉ dùng đúng 2 màu chủ đạo: cyan (--chong) và hồng (--vk) — không thêm màu khác.
@@ -4043,11 +4154,17 @@ function initParticleNetwork(){
   const pcolor = new Uint8Array(MAX_CAP);   // chỉ số màu (0/1 -> palette)
   let activeCount = 0;
 
-  const WANDER = 0.03; // biên độ đổi hướng ngẫu nhiên mỗi khung hình -> quỹ đạo cong nhẹ, mượt, không rời rạc
+  const WANDER = 0.03; // biên độ đổi hướng ngẫu nhiên (tính theo căn bậc hai của thời gian -> cùng "độ cong" ở 30/60/120 fps)
+  const EDGE_TURN = 0.05; // mức bẻ hướng mỗi khung (ở 60 fps) khi hạt lọt vào vùng đệm sát mép; càng sát mép càng mạnh
+  function wrapAngle(a){
+    while(a > Math.PI) a -= Math.PI * 2;
+    while(a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
 
   function initParticleAt(i){
-    px[i] = Math.random() * width;
-    py[i] = Math.random() * height;
+    px[i] = 8 + Math.random() * Math.max(1, width - 16);   // sinh hạt cách mép ≥ 8px -> không bị chốt an toàn lật hướng ngay khung đầu
+    py[i] = 8 + Math.random() * Math.max(1, height - 16);
     pangle[i] = Math.random() * Math.PI * 2;
     pspeed[i] = 0.12 + Math.random() * 0.20;
     pvx[i] = Math.cos(pangle[i]) * pspeed[i];
@@ -4087,10 +4204,18 @@ function initParticleNetwork(){
   }
 
   // ---------- Resize (debounce ở nơi gọi) ----------
-  function resize(){
-    const rect = canvas.getBoundingClientRect();
-    width = Math.max(1, Math.round(rect.width || window.innerWidth));
-    height = Math.max(1, Math.round(rect.height || window.innerHeight));
+  function resize(force){
+    const vw = document.documentElement.clientWidth || window.innerWidth || 1, vh = window.innerHeight || 1; // clientWidth: không tính thanh cuộn dọc của desktop
+    // Thanh địa chỉ trình duyệt co/giãn khi cuộn chỉ làm chiều cao đổi vài chục px: bỏ qua, KHÔNG cấp phát lại canvas
+    // (cấp phát lại xoá trắng canvas + dựng lại lưới -> chớp/giật lúc đang cuộn).
+    if(!force && width && vw === lastVw && Math.abs(vh - lastVh) < 150) return;
+    lastVw = vw; lastVh = vh;
+    // Màn cảm ứng: canvas cao hơn khung nhìn 100px để khi thanh địa chỉ ẩn đi vẫn không hở dải trống ở đáy.
+    width = Math.max(1, Math.round(vw));
+    height = Math.max(1, Math.round(vh + (coarsePointer ? 100 : 0)));
+    canvas.style.width = width + "px";   // kích thước CSS cố định theo lần cấp phát -> canvas không bị kéo giãn khi khung nhìn đổi nhẹ
+    canvas.style.height = height + "px";
+    edgeZone = Math.max(24, Math.min(56, Math.min(width, height) * 0.12));
     const isMobile = width < 640;
     dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 2); // di động: DPR trần thấp hơn hẳn -> ít pixel phải vẽ/hoà trộn mỗi khung hình, mượt hơn xuyên suốt kể cả lúc cuộn
     canvas.width = Math.round(width * dpr);
@@ -4115,39 +4240,58 @@ function initParticleNetwork(){
   // ---------- Vòng lặp animate (không cấp phát object/mảng mới trong này) ----------
   const REPEL_RADIUS = 90;
   const REPEL_RADIUS_SQ = REPEL_RADIUS * REPEL_RADIUS;
-  const REPEL_STRENGTH = 2.2;
-  const EASE = 0.08;
+  const REPEL_STRENGTH = 0.7; // tốc độ né tối đa (px/khung ở 60 fps) ~2–3 lần tốc độ trôi nền: hạt "lách" nhẹ chứ không bị bắn đi
+  const EASE = 0.08; // hệ số hồi về hướng trôi nền (ở 60 fps); được quy đổi theo dt thật mỗi khung
 
   function renderFrame(dt){
     ctx.clearRect(0, 0, width, height);
 
-    // Cập nhật vị trí: hướng trôi tự đổi rất chậm (wander) để quỹ đạo cong mềm mại thay vì đi thẳng
-    // cứng nhắc, cộng thêm né nhẹ theo con trỏ (easing về lại hướng trôi nền khi rời xa).
+    // Cập nhật vị trí: hướng trôi tự đổi rất chậm (wander), né nhẹ theo con trỏ chuột, và được BẺ CONG MỀM
+    // khi tới gần mép màn hình (không còn bật cứng). Mọi hệ số đều quy đổi theo dt thật nên 30/60/120 fps cho cùng chuyển động.
+    const easeK = 1 - Math.pow(1 - EASE, dt);
+    const wanderStep = WANDER * Math.sqrt(dt);
+    const edgeTurnBase = EDGE_TURN;
     for(let i = 0; i < activeCount; i++){
-      pangle[i] += (Math.random() - 0.5) * WANDER * dt;
+      let ang = pangle[i] + (Math.random() - 0.5) * wanderStep;
 
-      let targetVx = Math.cos(pangle[i]) * pspeed[i];
-      let targetVy = Math.sin(pangle[i]) * pspeed[i];
-      const dx = px[i] - mouseX, dy = py[i] - mouseY;
+      // Vùng đệm mềm: càng sát mép, hướng trôi càng được xoay về phía trong màn hình.
+      let ex = 0, ey = 0;
+      const xi = px[i], yi = py[i];
+      if(xi < edgeZone) ex = 1 - xi / edgeZone;
+      else if(xi > width - edgeZone) ex = -(1 - (width - xi) / edgeZone);
+      if(yi < edgeZone) ey = 1 - yi / edgeZone;
+      else if(yi > height - edgeZone) ey = -(1 - (height - yi) / edgeZone);
+      if(ex !== 0 || ey !== 0){
+        let strength = Math.sqrt(ex * ex + ey * ey);
+        if(strength > 1) strength = 1;
+        const diff = wrapAngle(Math.atan2(ey, ex) - ang);
+        ang += diff * (1 - Math.pow(1 - edgeTurnBase * strength, dt));
+      }
+      pangle[i] = ang;
+
+      let targetVx = Math.cos(ang) * pspeed[i];
+      let targetVy = Math.sin(ang) * pspeed[i];
+      const dx = xi - mouseX, dy = yi - mouseY;
       const distSq = dx * dx + dy * dy;
       if(distSq < REPEL_RADIUS_SQ && distSq > 0.0001){
         const dist = Math.sqrt(distSq);
-        const force = (1 - dist / REPEL_RADIUS) * REPEL_STRENGTH;
+        const t = 1 - dist / REPEL_RADIUS;
+        const force = t * t * (3 - 2 * t) * REPEL_STRENGTH; // smoothstep: vừa vào/ra vùng né thì lực tăng/giảm êm, không "bật" đột ngột
         targetVx += (dx / dist) * force;
         targetVy += (dy / dist) * force;
       }
-      pvx[i] += (targetVx - pvx[i]) * EASE;
-      pvy[i] += (targetVy - pvy[i]) * EASE;
+      pvx[i] += (targetVx - pvx[i]) * easeK;
+      pvy[i] += (targetVy - pvy[i]) * easeK;
 
-      let x = px[i] + pvx[i] * dt;
-      let y = py[i] + pvy[i] * dt;
-      // Nảy nhẹ khi chạm mép màn hình (thay vì biến mất/dịch chuyển tức thời sang phía đối diện):
-      // phản chiếu góc trôi qua trục chạm, quỹ đạo bật lại vẫn mượt chứ không giật cục.
+      let x = xi + pvx[i] * dt;
+      let y = yi + pvy[i] * dt;
+      // Chốt an toàn: nếu vẫn lọt mép (vd. bị con trỏ ép sát tường) thì giữ lại trong khung, và CHỈ đổi hướng
+      // khi hạt đang bay RA ngoài — hạt đang bay vào trong thì giữ nguyên hướng (hết hiện tượng lật hướng mỗi khung gây rung).
       const r = pr[i];
-      if(x < r){ x = r; pangle[i] = Math.PI - pangle[i]; }
-      else if(x > width - r){ x = width - r; pangle[i] = Math.PI - pangle[i]; }
-      if(y < r){ y = r; pangle[i] = -pangle[i]; }
-      else if(y > height - r){ y = height - r; pangle[i] = -pangle[i]; }
+      if(x < r){ x = r; if(Math.cos(ang) < 0) pangle[i] = Math.PI - ang; }
+      else if(x > width - r){ x = width - r; if(Math.cos(ang) > 0) pangle[i] = Math.PI - ang; }
+      if(y < r){ y = r; if(Math.sin(ang) < 0) pangle[i] = -pangle[i]; }
+      else if(y > height - r){ y = height - r; if(Math.sin(ang) > 0) pangle[i] = -pangle[i]; }
       px[i] = x; py[i] = y;
     }
 
@@ -4218,17 +4362,24 @@ function initParticleNetwork(){
   function step(now){
     if(!running) return;
     rafId = requestAnimationFrame(step); // luôn đặt lịch khung kế tiếp trước tiên -> vòng lặp không bao giờ dừng, kể cả lúc cuộn
-    if(targetFrameMs && lastTime && (now - lastTime) < targetFrameMs) return; // di động: chưa đến lúc vẽ khung mới (throttle ~30fps) -> bỏ qua khung này, đỡ tải mà hạt vẫn luôn đang trôi
-    const dt = lastTime ? Math.min(2.5, (now - lastTime) / 16.6667) : 1; // chuẩn hoá ~60fps, chặn bước nhảy khi tab quay lại
-    lastTime = now;
+    const elapsed = now - lastTime;
+    // Giới hạn ~30fps: chừa dung sai 1ms (khung vsync thứ 2 hay đến sớm 0,01–0,3ms so với 33,33ms; nếu chặn cứng nó bị bỏ
+    // và khung hiển thị rơi về 50ms -> nhịp lúc 33ms lúc 50ms, nhìn như giật) và dịch mốc theo phần dư để nhịp luôn đều.
+    if(targetFrameMs && lastTime && elapsed < targetFrameMs - 1) return;
+    const dt = lastRender ? Math.min(2.5, (now - lastRender) / 16.6667) : 1; // chuẩn hoá ~60fps, chặn bước nhảy khi tab quay lại
+    lastTime = (targetFrameMs && lastTime && elapsed >= targetFrameMs) ? now - (elapsed % targetFrameMs) : now;
+    lastRender = now;
     renderFrame(dt);
   }
 
   function perfLite(){ return document.documentElement.getAttribute("data-perf") === "lite"; }
   function start(){
     if(running || reduceMotion || perfLite()) return;
+    // Đang có hộp thoại phủ kín (class anim-paused) thì không chạy lại — vd. quay lại tab khi hộp thoại còn mở.
+    if(document.documentElement.classList.contains("anim-paused")) return;
     running = true;
     lastTime = 0;
+    lastRender = 0;
     rafId = requestAnimationFrame(step);
   }
   function stop(){
@@ -4257,7 +4408,7 @@ function initParticleNetwork(){
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      resize();
+      resize(false);
       if(reduceMotion) renderFrame(0); // giảm chuyển động -> vẽ lại đúng 1 khung tĩnh sau khi đổi kích thước
     }, 150); // gộp các lần resize liên tiếp, tránh tính lại lưới/mật độ quá nhiều lần khi kéo cửa sổ
   });
@@ -4267,15 +4418,27 @@ function initParticleNetwork(){
   });
 
 
-  // Hạt "né nhẹ" theo con trỏ chuột / ngón tay — canvas vẫn pointer-events:none nên
-  // phải lắng nghe sự kiện trên window để không chặn thao tác của các phần tử bên dưới.
-  window.addEventListener("mousemove", (e) => { mouseX = e.clientX; mouseY = e.clientY; }, { passive: true });
-  window.addEventListener("touchmove", (e) => {
+  // Hạt "né nhẹ" theo con trỏ chuột / ngón tay — canvas vẫn pointer-events:none nên phải lắng nghe trên window.
+  // Chuột thật: dùng pointermove (pointerType = mouse). Ngón tay: dùng touch events (pointer events bị trình duyệt
+  // huỷ ngay khi bắt đầu cuộn, còn touchmove thì vẫn chạy suốt lúc kéo).
+  // Nhấc tay / bị huỷ cảm ứng / rời cửa sổ -> xoá vị trí, để không còn "con trỏ ma" đẩy hạt đứng yên.
+  function setMouse(x, y){ mouseX = x; mouseY = y; }
+  function clearMouse(){ mouseX = -9999; mouseY = -9999; }
+  if(window.PointerEvent){
+    window.addEventListener("pointermove", (e) => { if(e.pointerType === "mouse") setMouse(e.clientX, e.clientY); }, { passive: true });
+  }else{
+    window.addEventListener("mousemove", (e) => setMouse(e.clientX, e.clientY), { passive: true });
+  }
+  function onTouch(e){
     const t = e.touches && e.touches[0];
-    if(t){ mouseX = t.clientX; mouseY = t.clientY; }
-  }, { passive: true });
-  window.addEventListener("touchend", () => { mouseX = -9999; mouseY = -9999; }, { passive: true });
-  document.addEventListener("mouseleave", () => { mouseX = -9999; mouseY = -9999; });
+    if(t) setMouse(t.clientX, t.clientY);
+  }
+  window.addEventListener("touchstart", onTouch, { passive: true });
+  window.addEventListener("touchmove", onTouch, { passive: true });
+  window.addEventListener("touchend", clearMouse, { passive: true });
+  window.addEventListener("touchcancel", clearMouse, { passive: true });
+  document.addEventListener("mouseleave", clearMouse);
+  window.addEventListener("blur", clearMouse);
 
   if(reduceMotionQuery && reduceMotionQuery.addEventListener){
     reduceMotionQuery.addEventListener("change", (e) => {
@@ -4285,7 +4448,7 @@ function initParticleNetwork(){
   }
 
   refreshColors();
-  resize();
+  resize(true);
   if(reduceMotion){
     renderFrame(0); // chỉ vẽ đúng 1 khung tĩnh, không animate — tôn trọng prefers-reduced-motion
   }else if(!document.hidden){
