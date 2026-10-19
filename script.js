@@ -454,11 +454,35 @@
 
   function commit(){ monthsData[currentMonthKey] = entries; saveCache(); }
 
-  function saveCache(){
+  // Bản lưu tạm (dùng khi mở app lúc mất mạng). Ghi GỘP: nhiều thay đổi liên tiếp chỉ serialize 1 lần (sau 250ms),
+  // và luôn ghi nốt khi app bị ẩn / đóng (xem khối "Lưu khi ẩn app" ở cuối). Hàng đợi đồng bộ thì vẫn lưu NGAY (saveQueue),
+  // nên thay đổi chưa gửi không phụ thuộc vào bản lưu tạm này.
+  const CACHE_SAVE_DELAY_MS = 250;
+  let cacheTimer = null, cacheDirty = false, cacheFrozen = false, storageWarnAt = 0;
+  function warnStorageFull(msg){
+    const now = Date.now();
+    if(now - storageWarnAt < 60000) return; // tối đa 1 lần/phút, tránh dội thông báo
+    storageWarnAt = now;
+    try{ showToast(msg, "error", 12000); }catch(e){ /* chưa dựng xong giao diện */ }
+  }
+  function writeCacheNow(){
+    clearTimeout(cacheTimer); cacheTimer = null;
+    if(!cacheDirty || cacheFrozen) return;
+    cacheDirty = false;
     try{
       localStorage.setItem(CACHE_KEY, JSON.stringify({ months: monthsData, current: currentMonthKey }));
-    }catch(e){ /* hết dung lượng hoặc trình duyệt chặn — bỏ qua, không ảnh hưởng hoạt động chính */ }
+    }catch(e){
+      warnStorageFull("Bộ nhớ trên máy đã đầy: không ghi được bản lưu để dùng khi mất mạng. Dữ liệu vẫn được gửi lên Google Sheet.");
+    }
   }
+  function saveCache(){
+    if(cacheFrozen) return;
+    cacheDirty = true;
+    if(!cacheTimer) cacheTimer = setTimeout(writeCacheNow, CACHE_SAVE_DELAY_MS);
+  }
+  function flushCache(){ writeCacheNow(); }
+  // Dùng khi xoá sạch dữ liệu trên máy: huỷ mọi lần ghi đang chờ và chặn ghi lại cho tới khi tải lại trang.
+  function freezeCacheWrites(){ clearTimeout(cacheTimer); cacheTimer = null; cacheDirty = false; cacheFrozen = true; }
   function loadCache(){
     try{
       const raw = localStorage.getItem(CACHE_KEY);
@@ -508,12 +532,23 @@
   let lastSyncError = null; // { kind: "network" | "fatal", message }
   let startedWithCache = false;
 
-  function saveQueue(){
-    try{ localStorage.setItem(QUEUE_KEY, JSON.stringify(syncQueue)); }catch(e){ /* ignore */ }
+  // Ghi 1 khoá QUAN TRỌNG (thay đổi chưa gửi). Hết chỗ -> hy sinh bản lưu tạm (tải lại được từ Sheet) để giữ hàng đợi
+  // (không tải lại được); vẫn không được thì báo rõ cho người dùng thay vì im lặng.
+  function persistCritical(key, json){
+    try{ localStorage.setItem(key, json); return true; }catch(e){ /* thử dọn chỗ bên dưới */ }
+    try{
+      clearTimeout(cacheTimer); cacheTimer = null; cacheDirty = false;
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.setItem(key, json);
+      warnStorageFull("Bộ nhớ trên máy gần đầy: đã dọn bản lưu tạm để giữ các thay đổi chưa gửi. Hãy bấm Đồng bộ ngay khi có mạng.");
+      return true;
+    }catch(e){
+      warnStorageFull("Không lưu được thay đổi chưa gửi vì bộ nhớ máy đã đầy. Hãy bấm Đồng bộ ngay TRƯỚC khi đóng app, nếu không có thể mất chúng.");
+      return false;
+    }
   }
-  function saveRejected(){
-    try{ localStorage.setItem(REJECTED_KEY, JSON.stringify(rejectedItems)); }catch(e){ /* ignore */ }
-  }
+  function saveQueue(){ return persistCritical(QUEUE_KEY, JSON.stringify(syncQueue)); }
+  function saveRejected(){ return persistCritical(REJECTED_KEY, JSON.stringify(rejectedItems)); }
   function loadQueue(){
     try{
       const raw = localStorage.getItem(QUEUE_KEY);
@@ -674,7 +709,41 @@
     syncLock = run.then(() => {}, () => {});
     return run;
   }
+  // Gộp thay đổi cùng 1 khoản chi còn nằm chờ trong hàng đợi (chưa gửi): thêm rồi sửa vài lần = 1 request thay vì nhiều
+  // (mỗi request tới Apps Script mất 1–3 giây, chạy tuần tự). Không bao giờ đụng tới mục ĐANG gửi dở.
+  function isUpsertAction(a){ return a === "addEntry" || a === "updateEntry"; }
+  function findMergeTarget(item){
+    if(!item.entry || item.entry.id == null) return -1;
+    if(!isUpsertAction(item.action) && item.action !== "deleteEntry") return -1;
+    const id = String(item.entry.id);
+    for(let i = syncQueue.length - 1; i >= 0; i--){
+      const q = syncQueue[i];
+      if(q.monthKey !== item.monthKey) continue;
+      if(q.action === "syncMonth" || q.action === "deleteMonth") return -1; // mốc cấp tháng: không gộp vượt qua
+      if(!q.entry || String(q.entry.id) !== id) continue;
+      return q === syncInFlight ? -1 : i;                                 // mục đang gửi dở: để yên, xếp sau nó
+    }
+    return -1;
+  }
   function enqueueItem(item){
+    const idx = findMergeTarget(item);
+    if(idx >= 0){
+      const t = syncQueue[idx];
+      if(isUpsertAction(t.action) && isUpsertAction(item.action)){
+        t.entry = item.entry;                       // chỉ giữ bản mới nhất của khoản này
+        saveQueue(); refreshSyncStatus();
+        return t;
+      }
+      if(isUpsertAction(t.action) && item.action === "deleteEntry"){
+        syncQueue.splice(idx, 1);                   // sửa/thêm chưa gửi rồi xoá luôn -> bỏ mục cũ
+        if(t.action === "addEntry" && !t.attempts){ // thêm mà chưa từng thử gửi: server chưa biết gì -> khỏi cần gửi xoá
+          saveQueue(); refreshSyncStatus();
+          return t;
+        }
+      }else if(t.action === "deleteEntry" && item.action === "deleteEntry"){
+        return t;                                   // xoá trùng
+      }
+    }
     item.seq = ++syncSeq;
     item.attempts = 0;
     syncQueue.push(item);
@@ -958,10 +1027,10 @@
     const keys = Object.keys(monthsData).sort().reverse();
     list.innerHTML = keys.map(k =>
       '<div class="month-item-row">' +
-        '<button type="button" class="month-item' + (k === currentMonthKey ? " active" : "") + '" data-month="' + k + '">' +
+        '<button type="button" class="month-item' + (k === currentMonthKey ? " active" : "") + '" data-month="' + escapeHtml(k) + '">' +
           escapeHtml(monthLabel(k)) +
         '</button>' +
-        '<button type="button" class="month-delete-btn" data-delete-month="' + k + '" aria-label="Xoá ' + escapeHtml(monthLabel(k)) + '">' +
+        '<button type="button" class="month-delete-btn" data-delete-month="' + escapeHtml(k) + '" aria-label="Xoá ' + escapeHtml(monthLabel(k)) + '">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>' +
         '</button>' +
       '</div>'
@@ -1430,7 +1499,7 @@
         const c = catById[e.category] || catById.ca_nhan;
         const isMergeSelected = mergeMode && mergeSelectedIds.includes(e.id);
         return (
-          '<div class="t-row-wrap' + (isMergeSelected ? " merge-selected" : "") + '" data-id="' + e.id + '">' +
+          '<div class="t-row-wrap' + (isMergeSelected ? " merge-selected" : "") + '" data-id="' + escapeHtml(e.id) + '">' +
             '<div class="t-swipe-indicator t-swipe-delete-indicator" aria-hidden="true">' +
               '<svg width="18" height="18"><use href="#icon-trash-sprite"></use></svg>' +
               '<span>Xoá</span>' +
@@ -1439,7 +1508,7 @@
               '<svg width="18" height="18"><use href="#icon-edit-sprite"></use></svg>' +
               '<span>Sửa</span>' +
             '</div>' +
-            '<div class="t-row" data-id="' + e.id + '">' +
+            '<div class="t-row" data-id="' + escapeHtml(e.id) + '">' +
               '<span class="t-merge-check" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>' +
               '<span class="t-name">' + escapeHtml(e.name) + (e.note ? ' <span class="t-note">— ' + escapeHtml(e.note) + '</span>' : '') + '</span>' +
               '<span class="t-cat"><span class="badge" style="border-color:' + c.color + ';color:' + c.color + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span></span>' +
@@ -2768,7 +2837,7 @@
     if(stat.skipped > 0) bits.push('<span class="warn">bỏ qua ' + stat.skipped + ' dòng thiếu tên</span>');
     if(existingCount > 0) bits.push("app đang có sẵn " + existingCount + " khoản");
     row.innerHTML =
-      '<input type="checkbox" checked data-month="' + monthKey + '" />' +
+      '<input type="checkbox" checked data-month="' + escapeHtml(monthKey) + '" />' +
       '<span class="import-month-name">' + escapeHtml(monthKey) + '</span>' +
       '<span class="import-month-stats">' + bits.join(" · ") + '</span>';
     return row;
@@ -3293,7 +3362,7 @@
       renderMonthLoadList(); // các tháng đã tải xong chuyển sang "Đã có trên máy"
       // Giữ nguyên dấu tích ở các tháng chưa tải được, để bấm Tải là thử lại đúng các tháng đó.
       failed.forEach((k) => {
-        const cb = monthLoadList.querySelector('input[data-month="' + k + '"]');
+        const cb = monthLoadList.querySelector('input[data-month="' + String(k).replace(/["\\]/g, "\\$&") + '"]');
         if(cb && !cb.disabled) cb.checked = true;
       });
       updateMonthLoadButtons();
@@ -3930,6 +3999,7 @@
       done = true;
       closeLogoutModal();
       if(wipe){
+        freezeCacheWrites(); // huỷ lần ghi bản lưu tạm đang chờ, kẻo nó ghi lại dữ liệu vừa xoá
         [CACHE_KEY, QUEUE_KEY, LAST_SYNC_KEY, REJECTED_KEY, LAST_PULL_KEY].forEach((k) => { try{ localStorage.removeItem(k); }catch(err){} });
         clearSessionLocal();
         location.reload(); // nạp lại cho sạch trạng thái trong bộ nhớ
@@ -4084,6 +4154,108 @@
     authGateShow("", false);
     startSignInFlow();
   }
+
+  // ---------- Lưu khi ẩn app ----------
+  // Bản lưu tạm được ghi gộp (saveCache) nên phải ghi nốt ngay lúc app bị ẩn / đóng.
+  document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden") flushCache(); });
+  window.addEventListener("pagehide", flushCache);
+
+  // ---------- Hộp thoại: nút Back, phím Esc, trợ năng ----------
+  // Áp dụng chung cho mọi ".modal-overlay" mà không đụng vào từng hàm mở/đóng: theo dõi lớp "show".
+  //  - Mở hộp thoại -> thêm 1 mục lịch sử, nên nút Back (Android / vuốt cạnh iOS) ĐÓNG hộp thoại thay vì thoát app.
+  //  - Đóng bằng cách khác (nút Huỷ, bấm nền...) -> gỡ mục lịch sử tương ứng.
+  //  - Esc đóng hộp thoại trên cùng (hoặc các bảng chọn đang mở); Tab xoay vòng trong hộp thoại.
+  //  - Đóng = bấm vào nền hộp thoại, tức đi đúng đường sẵn có của từng hộp (vd. hỏi "bỏ thay đổi?" của form).
+  (function setupOverlayNav(){
+    const overlays = Array.prototype.slice.call(document.querySelectorAll(".modal-overlay"));
+    if(!overlays.length) return;
+    const stack = [];          // hộp thoại đang mở, theo thứ tự mở (cuối = trên cùng)
+    const openers = new Map(); // phần tử đã bấm để mở, để trả focus khi đóng
+    let histDepth = 0;         // số mục lịch sử mình đã thêm mà chưa gỡ
+    let ignorePops = 0;        // số popstate do chính mình gây ra (history.go) cần bỏ qua
+
+    overlays.forEach((ov, i) => {
+      const dlg = ov.querySelector(".modal");
+      if(!dlg) return;
+      dlg.setAttribute("role", "dialog");
+      dlg.setAttribute("aria-modal", "true");
+      dlg.setAttribute("tabindex", "-1");
+      dlg.style.outline = "none";
+      const title = dlg.querySelector(".modal-title");
+      if(title){
+        if(!title.id) title.id = (ov.id || ("dlg" + i)) + "Title";
+        dlg.setAttribute("aria-labelledby", title.id);
+      }
+    });
+
+    const isShown = (ov) => ov.classList.contains("show");
+    const dialogOf = (ov) => ov.querySelector(".modal");
+    function dismiss(ov){ ov.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); }
+    function releaseHistory(){
+      const extra = histDepth - stack.length;
+      if(extra > 0){
+        histDepth -= extra;
+        ignorePops++;
+        try{ history.go(-extra); }catch(e){ ignorePops--; }
+      }
+    }
+    function sync(ov){
+      const idx = stack.indexOf(ov), shown = isShown(ov);
+      if(shown && idx === -1){
+        stack.push(ov);
+        openers.set(ov, document.activeElement);
+        try{ history.pushState({ ovl: ov.id }, "", location.href); histDepth++; }catch(e){ /* không có lịch sử: vẫn dùng được, chỉ mất nút Back */ }
+        const dlg = dialogOf(ov);
+        if(dlg && !dlg.contains(document.activeElement)){ try{ dlg.focus({ preventScroll: true }); }catch(e){} }
+      }else if(!shown && idx !== -1){
+        stack.splice(idx, 1);
+        const op = openers.get(ov);
+        openers.delete(ov);
+        releaseHistory();
+        const topDlg = stack.length ? dialogOf(stack[stack.length - 1]) : null;
+        if(op && op.isConnected && op !== document.body && !/^(INPUT|TEXTAREA|SELECT)$/.test(op.tagName) && (!topDlg || topDlg.contains(op))){
+          try{ op.focus({ preventScroll: true }); }catch(e){}
+        }
+      }
+    }
+    const mo = new MutationObserver((muts) => {
+      const seen = new Set();
+      muts.forEach((m) => { if(!seen.has(m.target)){ seen.add(m.target); sync(m.target); } });
+    });
+    overlays.forEach((ov) => { mo.observe(ov, { attributes: true, attributeFilter: ["class"] }); sync(ov); });
+
+    window.addEventListener("popstate", () => {
+      if(ignorePops > 0){ ignorePops--; return; }
+      if(!stack.length) return;
+      histDepth = Math.max(0, histDepth - 1);          // mục lịch sử của hộp thoại trên cùng vừa bị Back lấy đi
+      const top = stack[stack.length - 1];
+      dismiss(top);
+      if(isShown(top)){                                // chưa đóng (vd. đang hỏi "bỏ thay đổi?") -> trả lại mục lịch sử
+        try{ history.pushState({ ovl: top.id }, "", location.href); histDepth++; }catch(e){}
+      }
+    });
+
+    const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    document.addEventListener("keydown", (e) => {
+      if(e.isComposing) return;
+      if(e.key === "Escape" || e.key === "Esc"){
+        if(stack.length){ e.preventDefault(); dismiss(stack[stack.length - 1]); }
+        else if(document.body) document.body.click(); // không có hộp thoại: để bộ xử lý "bấm ra ngoài" sẵn có đóng các bảng chọn / menu
+        return;
+      }
+      if(e.key === "Tab" && stack.length){
+        const dlg = dialogOf(stack[stack.length - 1]);
+        if(!dlg) return;
+        const f = Array.prototype.filter.call(dlg.querySelectorAll(FOCUSABLE), (el) => el.offsetParent !== null);
+        const a = document.activeElement;
+        if(!f.length){ e.preventDefault(); dlg.focus(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if(!dlg.contains(a)){ e.preventDefault(); first.focus(); }
+        else if(e.shiftKey && (a === first || a === dlg)){ e.preventDefault(); last.focus(); }
+        else if(!e.shiftKey && a === last){ e.preventDefault(); first.focus(); }
+      }
+    });
+  })();
 
   // ---------- Init ----------
   initGoogleSignIn();
