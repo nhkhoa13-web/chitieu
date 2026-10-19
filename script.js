@@ -807,12 +807,15 @@
     syncPhase = "push";
     refreshSyncStatus();
     let result = { ok: true };
+    const staleMonths = new Set(); // tháng có thay đổi bị server bỏ qua vì khoản đó đã có bản mới hơn (từ thiết bị khác)
+    let staleCount = 0;
     try{
       while(syncQueue.length){
         const item = syncQueue[0];
         syncInFlight = item;
         try{
-          await sheetRequest(buildPayload(item));
+          const resp = await sheetRequest(buildPayload(item));
+          if(resp && resp.stale){ staleCount++; if(item.monthKey) staleMonths.add(item.monthKey); }
           removeFromQueue(item);
           saveQueue();   // xong 1 mục -> lưu ngay, tránh gửi lại nếu tải lại trang
           markPushed();
@@ -848,7 +851,16 @@
     }
     if(!result.ok && result.kind === "network") scheduleRetry();
     refreshSyncStatus();
+    if(staleCount) handleStaleWrites(staleMonths, staleCount);
     return result;
+  }
+  // Server giữ bản mới hơn (do thiết bị kia sửa sau) nên bỏ qua bản vừa gửi: báo cho người dùng và tải ngay bản trên Sheet,
+  // để màn hình khớp với Sheet thay vì còn hiện bản cũ tới lần tải kế tiếp.
+  function handleStaleWrites(months, count){
+    showToast((count > 1 ? count + " thay đổi của bạn không được ghi" : "Thay đổi của bạn không được ghi") +
+      " vì khoản chi đó vừa được sửa mới hơn ở thiết bị khác. Đang tải bản mới.", "info", 7000);
+    // Hẹn sang lượt sau: ta đang ở trong khoá đồng bộ, gọi pullMonth ngay sẽ chờ chính mình.
+    setTimeout(() => { months.forEach((k) => { if(monthsData[k]) pullMonth(k); }); }, 0); // tháng đã xoá trên máy thì không tải về lại
   }
   function processSyncQueue(){ return withSyncLock(drainQueue); }
 
@@ -3207,20 +3219,23 @@
       flashSyncStatus("Đã xoá " + label + " trên máy (vẫn còn trên Google Sheet)", 5000);
     }
   });
-  // Xoá cả trên Sheet là thao tác không hoàn tác được -> bấm 2 lần (lần 1 chỉ đổi nhãn, tự hoàn lại sau 4 giây).
+  // Xoá cả trên Sheet ảnh hưởng mọi thiết bị (tab được đưa vào thùng rác ẩn 30 ngày, không xoá hẳn ngay) -> vẫn bấm 2 lần cho chắc
+  // (lần 1 chỉ đổi nhãn, tự hoàn lại sau 4 giây).
   deleteMonthSheetBtn.addEventListener("click", () => {
     const key = deleteMonthKey;
     if(!key) return;
     if(!deleteMonthSheetBtn.classList.contains("armed")){
       deleteMonthSheetBtn.classList.add("armed");
-      document.getElementById("deleteMonthSheetTitle").textContent = "Bấm lần nữa để xoá vĩnh viễn";
+      document.getElementById("deleteMonthSheetTitle").textContent = "Bấm lần nữa để xoá";
       deleteArmTimer = setTimeout(disarmSheetDelete, 4000);
       return;
     }
+    const label = monthLabel(key);
     closeDeleteMonth();
     removeMonthLocally(key);
     // Lệnh xoá đi qua hàng đợi chung: bỏ các thay đổi chưa gửi của tháng này, gửi đúng thứ tự, mất mạng thì tự thử lại.
     queueDeleteMonth(key);
+    if(SHEET_SYNC_URL) flashSyncStatus("Đã xoá " + label + " (trên Sheet được giữ trong thùng rác 30 ngày)", 6000);
   });
   document.getElementById("deleteMonthCancel").addEventListener("click", closeDeleteMonth);
   deleteMonthOverlay.addEventListener("click", (e) => { if(e.target === deleteMonthOverlay) closeDeleteMonth(); });
@@ -3264,6 +3279,9 @@
   const monthLoadConfirm = document.getElementById("monthLoadConfirm");
   const monthLoadMsg = document.getElementById("monthLoadMsg");
   const monthLoadAllBtn = document.getElementById("monthLoadSelectAll");
+  const monthTrashBox = document.getElementById("monthTrash");
+  const monthTrashList = document.getElementById("monthTrashList");
+  let deletedMonths = [];     // [{ monthKey, trashName, deletedAt, expiresAt, count }] tháng trong thùng rác của Sheet (mới xoá nhất trước)
   let sheetMonths = [];       // [{ monthKey, count }] các tháng đang có trên Sheet (mới nhất trước)
   let monthLoadBusy = false;  // đang tải -> khoá các nút để không bấm chồng
   function setMonthLoadMsg(text, isError){
@@ -3298,12 +3316,68 @@
     }).join("");
     updateMonthLoadButtons();
   }
+  // ----- Tháng đã xoá trên Sheet (thùng rác 30 ngày): liệt kê + khôi phục -----
+  function renderMonthTrash(){
+    if(!deletedMonths.length){ monthTrashBox.hidden = true; monthTrashList.innerHTML = ""; return; }
+    monthTrashBox.hidden = false;
+    monthTrashList.innerHTML = deletedMonths.map((d) => {
+      const daysLeft = Math.max(0, Math.ceil((Number(d.expiresAt) - Date.now()) / 864e5));
+      return '<div class="month-load-row month-trash-row">' +
+        '<span class="month-load-name">' + escapeHtml(monthLabel(d.monthKey)) +
+          '<span class="month-trash-sub">Xoá ' + escapeHtml(relTime(d.deletedAt)) + " · " + (Number(d.count) || 0) + " khoản · còn " + daysLeft + " ngày</span></span>" +
+        '<button type="button" class="mini-btn" data-restore="' + escapeHtml(d.trashName) + '" aria-label="Khôi phục ' + escapeHtml(monthLabel(d.monthKey)) + '"' + (monthLoadBusy ? " disabled" : "") + ">Khôi phục</button>" +
+      "</div>";
+    }).join("");
+  }
+  async function restoreDeletedMonthFromTrash(trashName){
+    const d = deletedMonths.find((x) => x.trashName === trashName);
+    if(!d || monthLoadBusy) return;
+    const label = monthLabel(d.monthKey);
+    monthLoadBusy = true;
+    renderMonthTrash();
+    updateMonthLoadButtons();
+    setMonthLoadMsg("Đang khôi phục " + label + "…");
+    try{
+      // Qua khoá đồng bộ: gửi nốt thay đổi còn chờ trước, để thứ tự đúng.
+      await withSyncLock(async () => {
+        await drainQueue();
+        return sheetRequest({ action: "restoreMonth", trashName: d.trashName });
+      });
+    }catch(raw){
+      const err = toSyncError(raw);
+      monthLoadBusy = false;
+      if(err.kind === "auth"){ handleSyncAuthError({ authError: true, error: err.message }); return; }
+      const why = /Không rõ action/i.test(err.message) ? "Máy chủ chưa cập nhật Code.gs (cần bản v16 trở lên)." : err.message;
+      await loadSheetMonths(true); // làm mới 2 danh sách (tháng có thể đã được khôi phục / tạo lại ở thiết bị khác)
+      setMonthLoadMsg("Không khôi phục được " + label + ": " + why, true);
+      return;
+    }
+    // Đã khôi phục trên Sheet -> tải luôn về máy cho thấy ngay.
+    setMonthLoadMsg("Đã khôi phục " + label + ". Đang tải về máy…");
+    const r = await pullMonth(d.monthKey);
+    monthLoadBusy = false;
+    renderMonthUI();
+    if(r && r.ok){
+      closeMonthLoad();
+      switchMonth(d.monthKey, { skipPull: true }); // vừa tải xong nên không cần tải lại
+      flashSyncStatus("Đã khôi phục " + label + " từ thùng rác", 5000);
+    }else{
+      await loadSheetMonths(true);
+      setMonthLoadMsg("Đã khôi phục " + label + " trên Google Sheet nhưng chưa tải về máy được. Chọn tháng đó ở danh sách trên rồi bấm Tải.", true);
+    }
+  }
+  monthTrashList.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-restore]");
+    if(b && !b.disabled) restoreDeletedMonthFromTrash(b.getAttribute("data-restore"));
+  });
   function monthLoadError(text){
     monthLoadList.innerHTML = '<p class="devices-empty">' + escapeHtml(text) + '</p><button type="button" class="mini-btn" id="monthLoadRetry">Thử lại</button>';
     updateMonthLoadButtons();
   }
-  async function loadSheetMonths(){
-    setMonthLoadMsg("");
+  async function loadSheetMonths(keepMsg){
+    if(!keepMsg) setMonthLoadMsg("");
+    deletedMonths = [];
+    renderMonthTrash();
     if(!SHEET_SYNC_URL){
       monthLoadList.innerHTML = '<p class="devices-empty">Chưa bật đồng bộ Google Sheet nên chưa có danh sách tháng trên Sheet. Bạn vẫn tạo được tháng mới ở bên dưới.</p>';
       updateMonthLoadButtons();
@@ -3313,12 +3387,23 @@
     updateMonthLoadButtons();
     try{
       // Qua khoá đồng bộ: gửi nốt thay đổi còn chờ (vd. lệnh xoá tháng) trước, để danh sách phản ánh đúng Sheet.
-      const data = await withSyncLock(async () => {
+      const res = await withSyncLock(async () => {
         await drainQueue();
-        return sheetRequest({ action: "listMonths" });
+        const months = await sheetRequest({ action: "listMonths" });
+        let deleted = [];
+        try{
+          const t = await sheetRequest({ action: "listDeletedMonths" });
+          if(Array.isArray(t.deleted)) deleted = t.deleted;
+        }catch(e2){
+          // Máy chủ cũ (chưa có thùng rác) hoặc lỗi lẻ: chỉ ẩn mục "đã xoá", danh sách tháng chính vẫn hiện bình thường.
+          if(toSyncError(e2).kind === "auth") throw e2;
+        }
+        return { months, deleted };
       });
-      sheetMonths = (data.months || []).filter((m) => m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m.monthKey));
+      sheetMonths = (res.months.months || []).filter((m) => m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m.monthKey));
+      deletedMonths = res.deleted.filter((d) => d && /^\d{4}-(0[1-9]|1[0-2])$/.test(d.monthKey) && d.trashName);
       renderMonthLoadList();
+      renderMonthTrash();
     }catch(raw){
       const err = toSyncError(raw);
       if(err.kind === "auth"){ handleSyncAuthError({ authError: true, error: err.message }); return; }
@@ -4263,7 +4348,7 @@
 
 // ================== Đồng hồ HUD trên header ==================
 // Tự chạy độc lập, không đụng vào state/logic sổ chi tiêu — chỉ cập nhật đúng 1 dòng
-// chữ mỗi giây (rất nhẹ, không cần dừng khi tab ẩn như hiệu ứng particle).
+// chữ mỗi giây, và tự dừng khi tab/app bị ẩn.
 (() => {
   const timeEl = document.getElementById("hudClockTime");
   if(!timeEl) return;
@@ -4272,8 +4357,12 @@
     const now = new Date();
     timeEl.textContent = pad2(now.getHours()) + ":" + pad2(now.getMinutes()) + ":" + pad2(now.getSeconds());
   }
-  tick();
-  setInterval(tick, 1000);
+  // Chỉ chạy khi trang đang hiện: tab ẩn / app ở nền thì dừng hẳn, đỡ đánh thức CPU mỗi giây.
+  let timer = null;
+  function start(){ if(timer) return; tick(); timer = setInterval(tick, 1000); }
+  function stop(){ clearInterval(timer); timer = null; }
+  document.addEventListener("visibilitychange", () => { if(document.hidden) stop(); else start(); });
+  if(!document.hidden) start();
 })();
 
 // ================== Hiệu ứng nền: Particle Network ==================

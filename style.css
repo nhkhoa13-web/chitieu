@@ -1129,6 +1129,11 @@
   .link-btn{ background:none; border:0; padding:4px 2px; color:var(--chong-soft); font-size:12.5px; font-weight:600; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
   .month-load-msg{ margin:0 0 10px; font-size:12.5px; line-height:1.5; color:var(--chong-soft); }
   .month-load-msg.error{ color:var(--vk-soft); }
+.month-trash{ border-top:1px solid var(--border); padding-top:12px; margin:4px 0 12px; }
+.month-trash[hidden]{ display:none; }
+.month-trash .devices-list{ max-height:26vh; margin-bottom:0; }
+.month-trash-row{ cursor:default; }
+.month-trash-sub{ display:block; margin-top:2px; font-size:11.5px; font-weight:400; color:var(--text-faint); }
   .month-create{ border-top:1px solid var(--border); padding-top:12px; margin:4px 0 12px; }
   .month-create-title{ font-size:12px; color:var(--text-faint); margin-bottom:8px; }
   .month-create-row{ display:flex; gap:8px; align-items:flex-start; }

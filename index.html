@@ -597,6 +597,10 @@
         <button type="button" class="link-btn" id="monthLoadSelectAll" style="display:none;">Chọn tất cả tháng chưa có</button>
       </div>
       <p class="month-load-msg" id="monthLoadMsg" style="display:none;" role="status"></p>
+      <div class="month-trash" id="monthTrash" hidden>
+        <div class="month-create-title">Tháng đã xoá trên Sheet (giữ 30 ngày, bấm Khôi phục để lấy lại)</div>
+        <div class="devices-list" id="monthTrashList"></div>
+      </div>
       <div class="month-create">
         <div class="month-create-title">Hoặc tạo tháng mới (chưa có trên Sheet)</div>
         <div class="month-create-row">
@@ -647,7 +651,7 @@
         </button>
         <button type="button" class="delete-month-opt danger" id="deleteMonthSheetBtn">
           <span class="opt-title" id="deleteMonthSheetTitle">Xoá cả trên máy và Google Sheet</span>
-          <span class="opt-sub">Xoá vĩnh viễn tab tháng này trên Sheet, mọi thiết bị đều mất. Không thể hoàn tác.</span>
+          <span class="opt-sub">Tab tháng này trên Sheet được chuyển vào thùng rác ẩn, giữ 30 ngày rồi tự xoá hẳn. Mọi thiết bị đều không còn thấy tháng này.</span>
         </button>
       </div>
     </div>
