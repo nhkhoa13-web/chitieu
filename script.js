@@ -1511,7 +1511,7 @@
         const c = catById[e.category] || catById.ca_nhan;
         const isMergeSelected = mergeMode && mergeSelectedIds.includes(e.id);
         return (
-          '<div class="t-row-wrap' + (isMergeSelected ? " merge-selected" : "") + '" data-id="' + escapeHtml(e.id) + '">' +
+          '<div class="t-row-wrap' + (isMergeSelected ? " merge-selected" : "") + '" data-id="' + escapeHtml(e.id) + '" style="--c:' + c.color + '">' +
             '<div class="t-swipe-indicator t-swipe-delete-indicator" aria-hidden="true">' +
               '<svg width="18" height="18"><use href="#icon-trash-sprite"></use></svg>' +
               '<span>Xoá</span>' +
@@ -1682,6 +1682,7 @@
     fNote.value = entry ? (entry.note || "") : "";
     updateCategoryHint();
     buildCatList(fCategory.value);
+    closeAllPopovers();
     modalOverlay.classList.add("show");
     pauseParticleBg();
     // Chụp lại trạng thái form ngay sau khi mở, để biết sau này người dùng có gõ/đổi gì hay chưa.
@@ -1805,6 +1806,7 @@
     // (xem catDetailPrevBtn/catDetailNextBtn bên dưới) -> chỉ pause khi thật sự đang mở mới,
     // tránh pause nhiều lần liên tiếp mà chỉ resume 1 lần khi đóng (làm nền hạt bị đứng im luôn).
     const wasAlreadyOpen = catDetailOverlay.classList.contains("show");
+    closeAllPopovers();
     catDetailOverlay.classList.add("show");
     if(!wasAlreadyOpen) pauseParticleBg();
   }
@@ -2642,6 +2644,7 @@
     refreshToggleAllLabel(exportCatList, exportCatToggleAll);
     exportDayFrom.value = "";
     exportDayTo.value = "";
+    closeAllPopovers();
     exportOverlay.classList.add("show");
     pauseParticleBg();
   }
@@ -2878,6 +2881,7 @@
       importMonthList.appendChild(buildImportMonthRow(monthKey, stats[monthKey]));
     });
     refreshImportToggleAllLabel();
+    closeAllPopovers();
     importPreviewOverlay.classList.add("show");
     pauseParticleBg();
   }
@@ -3034,6 +3038,7 @@
   }
   menuToggleBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("menu");
     menuPanel.classList.toggle("show");
     if(!menuPanel.classList.contains("show")) collapseAccountMail();
   });
@@ -3069,6 +3074,7 @@
   }
   dayTriggerBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("day");
     dayPanelEl.classList.toggle("show");
     dayTriggerBtn.classList.toggle("open");
   });
@@ -3092,6 +3098,7 @@
   }
   catTriggerBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("cat");
     catPanelEl.classList.toggle("show");
     catTriggerBtn.classList.toggle("open");
   });
@@ -3116,6 +3123,7 @@
   }
   monthTrigger.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("month");
     const opening = !monthPanel.classList.contains("show");
     monthPanel.classList.toggle("show");
     monthTrigger.classList.toggle("open");
@@ -3198,6 +3206,7 @@
         deleteMonthNote.style.display = "none";
       }
     }
+    closeAllPopovers();
     deleteMonthOverlay.classList.add("show");
     pauseParticleBg();
   }
@@ -3414,6 +3423,7 @@
     closeMonthPanel();
     populateNewMonthPickers();
     closeYmPanel();
+    closeAllPopovers();
     monthLoadOverlay.classList.add("show");
     pauseParticleBg();
     loadSheetMonths();
@@ -3489,6 +3499,7 @@
   }
   ymTriggerBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("ym");
     ymDisplayYear = Math.min(YM_YEAR_MAX, Math.max(YM_YEAR_MIN, parseInt(document.getElementById("newYearSelect").value, 10) || YM_YEAR_MIN));
     buildYmYearHeader();
     buildYmMonthGrid();
@@ -3529,6 +3540,17 @@
     if(!e.target.closest("#ledgerCatPicker")) closeLedgerCatPanel();
     if(!e.target.closest("#ymPicker")) closeYmPanel();
   });
+  // Chỉ cho mở MỘT bảng chọn/menu tại một thời điểm: mỗi nút mở bảng đều chặn sự kiện bấm nên bộ đóng ở trên
+  // không chạy được; vì vậy mỗi nút gọi hàm này (truyền tên bảng của chính nó để giữ lại).
+  function closeAllPopovers(except){
+    if(except !== "month" && except !== "ym") closeMonthPanel();
+    if(except !== "menu") closeMenuPanel();
+    if(except !== "day") closeDayPanel();
+    if(except !== "cat") closeCatPanel();
+    if(except !== "ledgerDay") closeLedgerDayPanel();
+    if(except !== "ledgerCat") closeLedgerCatPanel();
+    if(except !== "ym") closeYmPanel();
+  }
 
   document.getElementById("balanceSpotlight").addEventListener("click", () => {
     const btn = document.getElementById("balanceSpotlight");
@@ -3588,6 +3610,7 @@
   }
   ledgerCatTriggerBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("ledgerCat");
     ledgerCatPanelEl.classList.toggle("show");
     ledgerCatTriggerBtn.classList.toggle("open");
   });
@@ -3611,6 +3634,7 @@
   }
   ledgerDayTriggerBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    closeAllPopovers("ledgerDay");
     ledgerDayPanelEl.classList.toggle("show");
     ledgerDayTriggerBtn.classList.toggle("open");
   });
@@ -4045,6 +4069,7 @@
     }else{
       logoutNote.style.display = "none";
     }
+    closeAllPopovers();
     logoutOverlay.classList.add("show");
     pauseParticleBg();
   }
@@ -4152,6 +4177,7 @@
     }
   }
   function openDevicesModal(){
+    closeAllPopovers();
     devicesOverlay.classList.add("show");
     pauseParticleBg();
     loadDevices();
@@ -4808,4 +4834,114 @@ initParticleNetwork();
   if(!fl) return;
   if(fl.sheet){ fl.media = "all"; return; }
   fl.addEventListener("load", function(){ fl.media = "all"; });
+})();
+
+/* ======================= HIỆU ỨNG GIAO DIỆN (trước đây là fx.js) ======================= */
+/* fx.js — lớp hiệu ứng tương tác cho giao diện V2. Chạy độc lập với script.js: lỗi ở đây không ảnh hưởng dữ liệu.
+ * - Đèn rọi theo con trỏ trên thẻ/hero (chỉ khi có chuột)
+ * - Gợn sóng (ripple) khi bấm nút
+ * - Header đổ bóng khi cuộn; nút nổi tự ẩn khi cuộn xuống, hiện lại khi cuộn lên
+ * - Hàng chi tiêu mới "trượt vào" lần lượt (chỉ hàng chưa từng thấy; đổi tháng thì chạy lại)
+ * Tự tắt khi bật Tiết kiệm pin hoặc hệ thống yêu cầu giảm chuyển động. */
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var reduce = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+  function calm() { return reduce.matches || root.getAttribute("data-perf") === "lite"; }
+
+  /* 1) Đèn rọi theo con trỏ */
+  var canHover = window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (canHover) {
+    var spotEl = null, spotX = 0, spotY = 0, spotRaf = 0;
+    document.addEventListener("pointermove", function (e) {
+      if (calm()) return;
+      var t = e.target.closest ? e.target.closest(".card, .hero") : null;
+      if (spotEl && spotEl !== t) spotEl.style.setProperty("--sp", "0");
+      spotEl = t;
+      if (!t) return;
+      spotX = e.clientX; spotY = e.clientY;
+      if (spotRaf) return;
+      spotRaf = requestAnimationFrame(function () {
+        spotRaf = 0;
+        if (!spotEl) return;
+        var r = spotEl.getBoundingClientRect();
+        spotEl.style.setProperty("--mx", (spotX - r.left) + "px");
+        spotEl.style.setProperty("--my", (spotY - r.top) + "px");
+        spotEl.style.setProperty("--sp", "1");
+      });
+    }, { passive: true });
+    document.addEventListener("pointerleave", function () {
+      if (spotEl) spotEl.style.setProperty("--sp", "0");
+      spotEl = null;
+    });
+  }
+
+  /* 2) Ripple + rung nhẹ */
+  document.addEventListener("pointerdown", function (e) {
+    var b = e.target.closest ? e.target.closest(".btn-primary, .fab-add") : null;
+    if (!b || b.disabled) return;
+    if (!calm()) {
+      var r = b.getBoundingClientRect();
+      var size = Math.max(r.width, r.height) * 2;
+      var s = document.createElement("span");
+      s.className = "fx-ripple";
+      s.style.width = s.style.height = size + "px";
+      s.style.left = (e.clientX - r.left - size / 2) + "px";
+      s.style.top = (e.clientY - r.top - size / 2) + "px";
+      b.appendChild(s);
+      s.addEventListener("animationend", function () { s.remove(); });
+    }
+    if (b.classList.contains("fab-add") && navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+  }, { passive: true });
+
+  /* 3) Header + nút nổi theo hướng cuộn */
+  var header = document.querySelector("header.top");
+  var fabs = [document.getElementById("fabAddBtn"), document.getElementById("fabMicBtn")];
+  var lastY = window.scrollY, ticking = false;
+  function onScroll() {
+    ticking = false;
+    var y = window.scrollY;
+    if (header) header.classList.toggle("scrolled", y > 8);
+    var dy = y - lastY;
+    if (Math.abs(dy) > 6) {
+      var hide = dy > 0 && y > 220;
+      setFabs(hide);
+      lastY = y;
+      // Dừng cuộn ~0.7 giây thì nút tự hiện lại: luôn bấm được, không phải cuộn ngược lên.
+      clearTimeout(fabTimer);
+      if (hide) fabTimer = setTimeout(function () { setFabs(false); }, 700);
+    }
+  }
+  var fabTimer = 0;
+  function setFabs(hide) { fabs.forEach(function (f) { if (f) f.classList.toggle("fab-hide", hide); }); }
+  window.addEventListener("scroll", function () {
+    if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
+  }, { passive: true });
+  onScroll();
+
+  /* 4) Hàng chi tiêu mới trượt vào */
+  var body = document.getElementById("ledgerBody");
+  var title = document.getElementById("monthTitle");
+  if (body && window.MutationObserver) {
+    var seen = new Set(), monthKey = title ? title.textContent : "";
+    var onRows = function () {
+      var cur = title ? title.textContent : "";
+      if (cur !== monthKey) { monthKey = cur; seen.clear(); }
+      var rows = body.querySelectorAll(".t-row-wrap");
+      var fresh = 0, add = [];
+      for (var i = 0; i < rows.length; i++) {
+        var id = rows[i].getAttribute("data-id");
+        if (!seen.has(id)) {
+          add.push(id);
+          if (!calm() && fresh < 14) {
+            rows[i].style.setProperty("--i", fresh++);
+            rows[i].classList.add("row-in");
+          }
+        }
+      }
+      add.forEach(function (id) { seen.add(id); });
+    };
+    new MutationObserver(onRows).observe(body, { childList: true });
+    onRows(); // lần hiển thị đầu tiên cũng được tính (trượt vào lần lượt khi mở app, và không chạy lại khi lọc/bỏ lọc)
+  }
 })();

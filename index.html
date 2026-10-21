@@ -62,8 +62,8 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <!-- Font nạp KHÔNG chặn lần vẽ đầu tiên (media=print rồi đổi sang all khi tải xong) -> splash hệ thống Android biến mất sớm hơn -->
-<link id="gfont" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" media="print" />
-<noscript><link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" /></noscript>
+<link id="gfont" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -105,6 +105,7 @@
       <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/>
     </symbol>
   </svg>
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i><i class="a4"></i></div>
   <canvas id="particleNetwork" aria-hidden="true"></canvas>
   <div class="auth-gate" id="authGate">
     <div class="auth-gate-card">
@@ -126,7 +127,7 @@
   <div class="wrap">
     <header class="top">
       <div>
-        <div class="eyebrow">SỔ CHI TIÊU</div>
+        <div class="eyebrow"><svg class="brand-mark" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="bmC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6CF6FB"/><stop offset="1" stop-color="#29E7F0"/></linearGradient><linearGradient id="bmP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6AB0"/><stop offset="1" stop-color="#F7318F"/></linearGradient></defs><rect x="52" y="62" width="40" height="100" rx="11" fill="url(#bmC)"/><rect x="108" y="92" width="40" height="70" rx="11" fill="url(#bmP)"/><circle cx="100" cy="34" r="17" fill="#FFC93C"/><circle cx="100" cy="34" r="9.5" fill="none" stroke="#B0761E" stroke-width="2.6"/></svg>Sổ chi tiêu</div>
         <div class="sync-status-row" style="display:flex; align-items:center; gap:6px; margin-bottom:4px; min-width:0;">
           <div class="sync-status" id="syncStatus" style="font-size:11px;color:var(--text-faint);min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;"></div>
         </div>
