@@ -1456,8 +1456,8 @@
   }
 
   // Vuốt trái = mở form Sửa ngay; vuốt phải = hiện popup xác nhận Xoá ngay (không cần bấm nút riêng).
-  const LEDGER_SWIPE_MAX = 100;     // giới hạn kéo tối đa (px) — chỉ để tạo hiệu ứng, không phải ngưỡng kích hoạt
-  const LEDGER_SWIPE_TRIGGER = 74;  // kéo quá ngưỡng này rồi nhả tay mới kích hoạt Sửa/Xoá
+  const LEDGER_SWIPE_MAX = 64;      // giới hạn kéo tối đa (px) — chỉ để tạo hiệu ứng, không phải ngưỡng kích hoạt
+  const LEDGER_SWIPE_TRIGGER = 44;  // kéo quá ngưỡng này rồi nhả tay mới kích hoạt Sửa/Xoá (vuốt ngắn)
   function renderLedger(){
     const body = document.getElementById("ledgerBody");
     const searchWords = stripDiacritics(ledgerFilterText).trim().split(/\s+/).filter(Boolean);

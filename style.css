@@ -439,7 +439,7 @@
   .info-icon.third{ background:linear-gradient(135deg, rgba(var(--chong-soft-rgb),0.2), rgba(var(--vk-soft-rgb),0.2)); }
   .info-row-label{ flex:1; min-width:0; font-size:12.5px; color:var(--text-mid); font-weight:600; }
   .info-row-note{ font-size:10.5px; color:var(--text-faint); margin-top:2px; font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .info-row-calc{ font-size:11.5px; margin:5px 0 0 36px; font-family:var(--mono); color:var(--text-faint); line-height:1.5; }
+  .info-row-calc{ font-size:11.5px; margin:0 0 0 36px; font-family:var(--mono); color:var(--text-faint); line-height:1.5; }
   .info-row-calc b.c-ck{ color:var(--chong-soft); font-weight:600; white-space:nowrap; }
   .info-row-calc b.c-vk{ color:var(--vk-soft); font-weight:600; white-space:nowrap; }
   .val-badge{
@@ -693,7 +693,7 @@
   .empty-state{ text-align:center; padding:30px 10px; color:var(--text-faint); }
 
   /* Gom các khoản chi cùng ngày vào 1 cụm box riêng, dễ phân biệt với ngày khác */
-  .ledger-day-group{ margin-bottom:14px; }
+  .ledger-day-group{ margin-bottom:10px; }
   .ledger-day-group:last-child{ margin-bottom:0; }
   .ledger-day-head{
     display:flex; align-items:baseline; justify-content:space-between; gap:10px;
@@ -1164,11 +1164,17 @@
    Lớp này nằm CUỐI file để ghi đè; xoá phần này là trở về giao diện cũ.
    ===================================================================================================== */
 
+/* Space Grotesk vẽ dấu ngoặc ( ) [ ] { } và < > rất nhỏ, bị hạ thấp so với chữ số nên nhìn lệch.
+   Font siêu nhỏ này (chỉ 12 ký tự dấu, lấy từ Inter) thay riêng cho các dấu đó, các chữ khác vẫn dùng Space Grotesk. */
+@font-face{ font-family:'Brackets Fix'; font-style:normal; font-weight:100 900; font-display:block;
+  src:url(data:font/woff;base64,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) format('woff');
+  unicode-range:U+0028-0029,U+003C,U+003E,U+005B,U+005D,U+007B,U+007D,U+00AB,U+00BB,U+2039-203A; }
+
 @property --sp{ syntax:'<number>'; inherits:true; initial-value:0; }
 
 :root{
-  --serif:'Space Grotesk','Inter',system-ui,sans-serif;
-  --mono:'Space Grotesk','Inter',system-ui,sans-serif;
+  --serif:'Brackets Fix','Space Grotesk','Inter',system-ui,sans-serif;
+  --mono:'Brackets Fix','Space Grotesk','Inter',system-ui,sans-serif;
   --sans:'Inter',system-ui,sans-serif;
   --bg:#06080D; --surface:#0C121D; --surface2:#111927; --surface3:#0A1019;
   --surface-glass:rgba(15,21,34,0.58);
@@ -1230,17 +1236,15 @@ header.top.scrolled{ box-shadow:0 14px 34px -18px rgba(0,0,0,0.7); background:rg
 html[data-theme="light"] header.top{ background:linear-gradient(180deg, rgba(242,245,249,0.93), rgba(242,245,249,0.82)); }
 html[data-theme="light"] header.top.scrolled{ box-shadow:0 14px 30px -18px rgba(16,24,32,0.22); background:rgba(242,245,249,0.92); }
 .eyebrow{
-  display:flex; align-items:center; gap:9px; font-size:21px; line-height:1.1; font-weight:700; letter-spacing:-0.025em;
+  display:flex; align-items:center; gap:8px; font-size:21px; line-height:1.1; font-weight:700; letter-spacing:-0.025em;
   color:var(--text-hi); text-shadow:none;
 }
-.brand-mark{ width:24px; height:24px; flex-shrink:0; filter:drop-shadow(0 4px 10px rgba(var(--chong-rgb),0.35)); }
-.month-trigger{
-  padding:0 10px 0 13px; border-radius:999px; background:var(--tile); border:1px solid var(--border);
-  transition:background .2s ease, transform .2s var(--spring);
-}
-.month-trigger:hover{ background:var(--tile-hover); }
+.brand-mark{ width:16px; height:24px; flex-shrink:0; filter:drop-shadow(0 3px 8px rgba(var(--chong-rgb),0.35)); }
+html[data-theme="light"] .brand-mark{ filter:none; }
+.month-trigger{ transition:transform .2s var(--spring), opacity .2s ease; }
+.month-trigger:hover{ opacity:.85; }
 .month-trigger:active{ transform:scale(.97); }
-.month-trigger .title{ font-size:15px; font-weight:600; color:var(--text-hi); letter-spacing:-0.01em; }
+.month-trigger .title{ font-weight:700; color:var(--text-hi); letter-spacing:-0.015em; }
 .icon-btn, .auto-pull-toggle, .sort-toggle-btn{
   border-radius:12px; border-color:var(--border); background:var(--tile);
   transition:background .2s ease, color .2s ease, transform .2s var(--spring), border-color .2s ease;
@@ -1318,6 +1322,10 @@ html[data-theme="light"] .balance-number.to-vk{ background-image:linear-gradient
 html[data-theme="light"] .balance-number.zero{ background-image:linear-gradient(115deg, var(--zero), #19b36c); filter:none; }
 .balance-hint{ opacity:.8; }
 .info-row{ border-radius:16px; background:var(--tile); border-color:var(--border); }
+/* Mũi tên ‹ › trong ô tròn số tiền: to ngang chiều cao chữ số và nằm đúng tâm chữ số (Space Grotesk có tâm chữ số thấp hơn tâm dòng) */
+.val-badge{ gap:4px; }
+.val-badge svg{ width:16px; height:16px; }
+.val-badge .val-arrow{ display:flex; align-items:center; transform:translateY(-0.03em); }
 .stat-card{ gap:8px; background:var(--tile); border:1px solid var(--border); border-radius:14px; transition:background .2s ease, transform .25s var(--spring); }
 .stat-card:hover{ background:var(--tile-hover); transform:translateY(-1px); }
 .stat-icon{ border-radius:10px; }
@@ -1352,11 +1360,9 @@ html[data-theme="light"] .balance-number.zero{ background-image:linear-gradient(
 .ledger-day-dow{ font-size:11.5px; }
 .ledger-day-today-tag{ color:var(--chong-soft); background:rgba(var(--chong-rgb),0.16); box-shadow:inset 0 0 0 1px rgba(var(--chong-rgb),0.4); }
 .ledger-day-total{ font-size:12.5px; color:var(--text-muted); }
-.t-row-wrap .t-row::before{
-  content:""; position:absolute; left:0; top:14px; bottom:14px; width:3px; border-radius:0 3px 3px 0;
-  background:var(--c, var(--chong)); opacity:.95;
-}
-#ledgerBody.merge-mode .t-row::before{ display:none; }
+/* Vạch màu danh mục: dải cong ôm sát góc bo của hàng (inset shadow lệch 2px theo viền trái) */
+.t-row-wrap .t-row{ box-shadow:inset 2px 0 0 var(--c, var(--chong)); }
+#ledgerBody.merge-mode .t-row-wrap:not(.merge-selected) .t-row{ box-shadow:none; }
 .badge{
   border-color:transparent !important; background:color-mix(in srgb, currentColor 15%, transparent);
 }
@@ -1366,21 +1372,20 @@ html[data-theme="light"] .balance-number.zero{ background-image:linear-gradient(
 
 @media not all and (min-width:700px) and (pointer:fine){
   .t-row-wrap{ border-radius:14px; border:1px solid var(--border); box-shadow:none; }
-  .t-row-wrap .t-row{ background:linear-gradient(var(--tile), var(--tile)), var(--surface2); padding:10px 10px 10px 14px; transition:filter .2s ease; }
+  .t-row-wrap .t-row{ padding:10px 10px 10px 14px; transition:filter .2s ease; }
   .t-row{ grid-template-areas:"cat amt" "name name"; align-items:center; }
   .t-row-wrap .t-row:active{ filter:brightness(1.12); }
   .t-name{ font-weight:500; color:var(--text-hi); }
   .t-amt{ letter-spacing:-0.015em; }
-  /* Khối Sửa/Xoá nằm DƯỚI hàng chi tiêu: rộng hơn quãng kéo tối đa (100px) để luôn sát mép hàng, không để lộ khe hở;
+  /* Khối Sửa/Xoá nằm DƯỚI hàng chi tiêu: rộng hơn quãng kéo tối đa (64px) để luôn sát mép hàng, không để lộ khe hở;
      thu nhỏ theo mép ngoài để không bị hở phía trong; nội dung dịch vào phần nhìn thấy được. */
-  .t-swipe-indicator{ width:128px; }
-  .t-swipe-edit-indicator{ border-top-right-radius:13px; border-bottom-right-radius:13px; padding-left:28px; transform-origin:right center; }
-  .t-swipe-delete-indicator{ border-top-left-radius:13px; border-bottom-left-radius:13px; padding-right:28px; transform-origin:left center; }
+  .t-swipe-indicator{ width:88px; }
+  .t-swipe-edit-indicator{ border-top-right-radius:13px; border-bottom-right-radius:13px; padding-left:24px; transform-origin:right center; }
+  .t-swipe-delete-indicator{ border-top-left-radius:13px; border-bottom-left-radius:13px; padding-right:24px; transform-origin:left center; }
 }
 @media (min-width:700px) and (pointer:fine){
   .t-row-wrap .t-row{ padding-left:14px; padding-right:8px; border-radius:12px; transition:background .2s ease; }
   .t-row-wrap:hover .t-row{ background:var(--tile); }
-  .t-row-wrap .t-row::before{ top:10px; bottom:10px; }
 }
 
 /* ---------- Nút ---------- */
