@@ -1484,3 +1484,44 @@ html[data-perf="lite"] .card, html[data-perf="lite"] .hero{ background-image:non
   .menu-panel.show, .month-panel.show, .day-panel.show, .cat-panel.show, .ym-panel.show{ animation:none !important; }
   .fab-add, .fab-mic, .btn-primary, .stat-card{ transition:none; }
 }
+
+/* ============ Giọng nói: bảng "Đang nghe" / "Xem lại trước khi thêm" ============ */
+.voice-overlay{ z-index:55; }
+.voice-sheet{ max-width:460px; gap:12px; padding:18px 18px calc(16px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width:640px){
+  .voice-sheet{ max-width:none; border-radius:22px 22px 0 0; margin:auto 0 0; }
+}
+.vs-head{ display:flex; align-items:center; gap:12px; }
+.vs-titles{ flex:1; min-width:0; }
+.vs-sub{ margin:2px 0 0; font-size:12.5px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vs-wave{ display:flex; align-items:center; justify-content:center; gap:3px; width:36px; height:30px; flex-shrink:0; }
+.vs-wave i{ display:block; width:4px; height:10px; border-radius:2px; background:linear-gradient(180deg, var(--chong), var(--vk)); }
+.voice-overlay.is-listening .vs-wave i{ animation:vs-bar .9s ease-in-out infinite; }
+.voice-overlay.is-listening .vs-wave i:nth-child(2){ animation-delay:.12s; }
+.voice-overlay.is-listening .vs-wave i:nth-child(3){ animation-delay:.24s; }
+.voice-overlay.is-listening .vs-wave i:nth-child(4){ animation-delay:.36s; }
+.voice-overlay.is-listening .vs-wave i:nth-child(5){ animation-delay:.48s; }
+@keyframes vs-bar{ 0%,100%{ height:6px; } 50%{ height:26px; } }
+html[data-perf="lite"] .vs-wave i{ animation:none !important; height:14px; }
+@media (prefers-reduced-motion:reduce){ .vs-wave i{ animation:none !important; height:14px; } }
+.vs-listen[hidden], .vs-review[hidden]{ display:none; }
+.vs-transcript{ margin:0; min-height:72px; font-size:20px; line-height:1.4; color:var(--text-hi); overflow-wrap:anywhere; }
+.vs-transcript .int{ color:var(--text-faint); }
+.vs-transcript.empty::before{ content:"Hãy nói…"; color:var(--text-faint); }
+.vs-hint{ margin:6px 0 0; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.vs-rows{ display:flex; flex-direction:column; gap:10px; max-height:52vh; overflow-y:auto; overscroll-behavior:contain; }
+.vs-row{ display:flex; flex-direction:column; gap:8px; padding:10px; background:var(--surface3); border:1px solid var(--border2); border-radius:14px; }
+.vs-line{ display:flex; align-items:center; gap:8px; }
+.vs-name{ flex:1; min-width:0; font-size:16px; }
+.vs-del{ flex-shrink:0; width:34px; height:34px; }
+.vs-amt{ display:flex; align-items:center; gap:6px; flex:0 0 46%; min-width:0; font-size:12.5px; color:var(--text-muted); }
+.vs-amount{ width:100%; min-width:0; font-size:16px; font-variant-numeric:tabular-nums; }
+.vs-money{ font-size:13px; color:var(--text-mid); font-variant-numeric:tabular-nums; }
+.vs-money.bad{ color:#FF6B84; }
+.vs-pick select{ flex:1; min-width:0; font-size:13.5px; padding:9px; }
+.vs-why{ margin:0; padding-left:16px; font-size:12px; line-height:1.45; color:var(--gold); }
+.vs-row .bad, .vs-row input.bad{ border-color:#FF3B5C; }
+.vs-error{ margin:0; font-size:12.5px; line-height:1.4; color:#FF6B84; }
+.vs-error:empty{ display:none; }
+.vs-foot{ display:flex; gap:10px; }
+.vs-foot button{ flex:1; justify-content:center; }

@@ -1975,236 +1975,405 @@
   });
 
   // ================== Thêm khoản chi bằng giọng nói ==================
-  // Dùng Web Speech API (miễn phí, chạy ngay trên trình duyệt, không cần API key)
-  // để chuyển giọng nói thành văn bản, sau đó tách câu theo đúng khuôn mẫu:
-  // "... ngày X ... số tiền X ... tên X ... người thanh toán X ..."
-  // (các mục có thể nói theo thứ tự khác nhau, miễn giữ đúng từ khoá).
+  // Chuỗi xử lý: Web Speech API (miễn phí, chạy ngay trên trình duyệt) -> bộ phân tích "tìm số tiền trước"
+  // (vpParse) -> nếu chắc chắn thì thêm luôn (có Hoàn tác); nếu chưa chắc thì mở bảng xem lại để sửa trước khi ghi.
+  //
+  // Bộ phân tích nằm giữa 2 dòng <voice-parser> ... </voice-parser>: KHÔNG đụng tới giao diện hay dữ liệu của app,
+  // mọi thứ cần biết (ngày hôm nay, tháng đang xem, lịch sử tên khoản chi) đều truyền qua tham số ctx -> chạy thử riêng được.
+  // Đơn vị tiền của app là NGHÌN ĐỒNG: "20k", "hai mươi nghìn", "20.000" đều ra amount = 20.
 
-  const VN_NUM_WORDS = {
-    "không":0, "một":1, "mốt":1, "hai":2, "ba":3, "bốn":4, "tư":4,
-    "năm":5, "lăm":5, "nhăm":5, "sáu":6, "bảy":7, "bẩy":7, "tám":8, "chín":9, "mười":10
-  };
-  // Chuyển cụm số viết bằng chữ tiếng Việt (vd. "hai mươi lăm", "một trăm") thành số.
-  // Chỉ hỗ trợ tốt trong khoảng 0–999 — đủ dùng cho "ngày" (1–31) và "số tiền" (đơn vị nghìn).
-  function vietnameseWordsToNumber(str){
-    let words = String(str || "")
-      .toLowerCase()
-      .replace(/[^a-zà-ỹđ\s]/gi, " ")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    if(!words.length) return null;
-    let result = 0;
-    let matchedAny = false;
+  // <voice-parser>
+  const VP_DIGIT = { "một":1, "mốt":1, "hai":2, "ba":3, "bốn":4, "tư":4, "năm":5, "lăm":5, "nhăm":5, "sáu":6, "bảy":7, "bẩy":7, "tám":8, "chín":9 };
+  const VP_SCALE = { "nghìn":1e3, "ngàn":1e3, "k":1e3, "triệu":1e6, "tr":1e6, "củ":1e6, "tỷ":1e9, "tỉ":1e9 };
+  const VP_HALF = { "rưỡi":1, "rưởi":1 };
+  const VP_REL = { "nay":0, "qua":-1, "kia":-2, "kìa":-2 };
+  const VP_PART = { "sáng":1, "trưa":1, "chiều":1, "tối":1, "đêm":1 };
+  const VP_LIQUID = { "xăng":1, "dầu":1, "nước":1, "sữa":1, "bia":1, "rượu":1, "nhớt":1, "cồn":1 };
+  // Danh từ chỉ số lượng: "2 ly", "3 cái"... -> con số đứng trước KHÔNG phải tiền.
+  const VP_QTY = new Set(["cái","chai","kg","ký","cân","người","cây","hộp","con","quả","trái","ly","tô","chiếc","lần","phần","bát","gói","lọ","túi","lon","đôi","bó","vé","suất","tuần","tháng","tiếng","giờ","phút","bữa","lốc","thùng","mét","cm","gram","km","bộ","tấm","cuốn","quyển","cặp","hũ","chậu","buổi","viên","miếng","đĩa","chén","cốc","tờ","ngày","lít"]);
+  // Từ đứng ngay trước con số cho biết đó là ngày/giờ/thứ chứ không phải tiền.
+  const VP_NOT_MONEY_PREV = new Set(["thứ","tháng","lúc","tuần","quý","năm"]);
+  // Từ neo đứng sát trước số tiền. "Mạnh" = chắc chắn đang nói về giá.
+  const VP_ANCHOR_STRONG = new Set(["hết","giá","tốn","mất","tiền"]);
+  const VP_ANCHOR_ALL = new Set(["hết","giá","tốn","mất","tiền","số","là","khoảng","tầm","cỡ","chừng","gần","tổng","bằng"]);
+  const VP_SEP_STRONG = { "rồi":1, "tiếp":1 };
+  const VP_SEP_WEAK = { "và":1, "với":1, "còn":1, "thêm":1, "cộng":1 };
+  const VP_FILLER_LEAD = new Set(["thêm","cho","tôi","vào","sổ","khoản","chi","là","cái","một","mua","tên","ghi","nhập","đã","vừa","mới","giúp","hộ","đó"]);
+  const VP_FILLER_TAIL = new Set(["nhé","nha","nhá","ạ","đấy","đó","thôi","nghen","nhỉ","rồi","luôn"]);
+  const VP_CK = { chong:1, ck:1, anh:1 };
+  const VP_VK = { vo:1, vk:1, em:1 };
+  const VP_VERB = { tra:"tinh", chiu:"tinh", ung:"tinh", tinh:"tinh", chi:"tinh", bao:"tinh", dong:"tinh", thieu:"thieu", no:"thieu" };
+  const VP_ANCHORS = [["nguoi","thanh","toan"],["ai","thanh","toan"],["ai","tra"],["ai","mua"],["ai","tinh"],["danh","muc"],["loai","chi","tieu"],["loai"]];
+  const VP_CATWORD = { chong:1, vo:1, ck:1, vk:1, anh:1, em:1, tinh:1, tra:1, chiu:1, ung:1, chung:1, thieu:1, no:1, ca:1, nhan:1, rieng:1, la:1, cua:1, thanh:1, toan:1 };
 
-    const tramIdx = words.indexOf("trăm");
-    if(tramIdx !== -1){
-      const before = words.slice(0, tramIdx);
-      const hVal = before.length ? (VN_NUM_WORDS[before[before.length - 1]] ?? 1) : 1;
-      result += hVal * 100;
-      matchedAny = true;
-      words = words.slice(tramIdx + 1).filter(w => w !== "linh" && w !== "lẻ");
+  function vpNorm(s){ return String(s == null ? "" : s).normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim(); }
+  // Bỏ dấu từng ký tự (1 ký tự -> 1 ký tự) để vị trí chữ không bị lệch so với bản có dấu.
+  function vpFold(s){
+    let out = "";
+    for(let i = 0; i < s.length; i++){
+      const ch = s[i];
+      if(ch === "đ"){ out += "d"; continue; }
+      const f = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      out += f.length === 1 ? f : ch;
     }
+    return out;
+  }
+  // Khoá so khớp tên khoản chi (dùng để nhớ "cà phê" thường do ai trả).
+  function vpNameKey(name){ return vpFold(vpNorm(name)).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim(); }
+  const vpPad = (n) => (n < 10 ? "0" : "") + n;
+  const vpHas = (o, k) => k !== null && Object.prototype.hasOwnProperty.call(o, k);
 
-    const tenIdx = words.findIndex(w => w === "mươi" || w === "chục");
-    if(tenIdx !== -1){
-      const before = words.slice(0, tenIdx);
-      const tVal = before.length ? (VN_NUM_WORDS[before[before.length - 1]] ?? 1) : 1;
-      result += tVal * 10;
-      matchedAny = true;
-      const after = words.slice(tenIdx + 1);
-      if(after.length){
-        const last = after[after.length - 1];
-        if(last in VN_NUM_WORDS) result += VN_NUM_WORDS[last];
-      }
-    } else if(words.indexOf("mười") !== -1){
-      const idx = words.indexOf("mười");
-      result += 10;
-      matchedAny = true;
-      const after = words.slice(idx + 1);
-      if(after.length){
-        const last = after[after.length - 1];
-        if(last in VN_NUM_WORDS) result += VN_NUM_WORDS[last];
-      }
-    } else if(words.length){
-      const last = words[words.length - 1];
-      if(last in VN_NUM_WORDS){ result += VN_NUM_WORDS[last]; matchedAny = true; }
+  // "20.000" / "20,000" -> nghìn nhóm; "1,5" / "1.5" -> số thập phân.
+  function vpDigits(t){
+    if(/^\d{1,3}(\.\d{3})+,\d+$/.test(t)) return { v: Number(t.replace(/\./g, "").replace(",", ".")), grouped: true };
+    if(/^\d{1,3}(\.\d{3})+$/.test(t)) return { v: Number(t.replace(/\./g, "")), grouped: true };
+    if(/^\d{1,3}(,\d{3})+$/.test(t)) return { v: Number(t.replace(/,/g, "")), grouped: true };
+    if(/^\d+([.,]\d+)?$/.test(t)) return { v: Number(t.replace(",", ".")), grouped: false };
+    return null;
+  }
+  function vpTokens(raw){
+    const out = [], re = /\d[\d.,]*\d|\d|[\p{L}\p{M}]+/gu;
+    let m;
+    while((m = re.exec(raw))){
+      const t = m[0];
+      const d = /^\d/.test(t) ? vpDigits(t) : null;
+      if(/^\d/.test(t) && !d) continue;
+      out.push({ t, f: vpFold(t), s: m.index, e: m.index + t.length, num: d ? d.v : null, grouped: d ? d.grouped : false });
     }
-    return matchedAny ? result : null;
+    return out;
   }
 
-  // Tách số tiền nói ra: ưu tiên số/biểu thức viết bằng chữ số, nếu không có thì thử đọc chữ.
-  // Hỗ trợ thêm đơn vị "triệu" (vd. "một triệu hai" -> 1.200.000đ, "một triệu" -> 1.000.000đ).
-  function parseSpokenAmountPlain(raw){
-    let s = String(raw || "").toLowerCase().trim();
-    s = s.replace(/\b(nghìn|ngàn|đồng|vnđ|vnd|k)\b/g, " ").trim();
-    const compact = s.replace(/\s+/g, "");
-    const direct = evalAmountExpr(compact);
-    if(direct !== null && !isNaN(direct) && direct > 0) return direct;
-    const worded = vietnameseWordsToNumber(s);
-    return (worded === null || worded <= 0) ? null : worded;
+  // Số viết bằng chữ 1..999 bắt đầu ở token j: "hai trăm năm mươi", "mười lăm", "ba mươi mốt"...
+  function vpReadSmall(tk, j){
+    const W = (k) => { const x = tk[j + k]; return (x && x.num === null) ? x.t : null; };
+    const dg = (w) => vpHas(VP_DIGIT, w) ? VP_DIGIT[w] : null;
+    let v = 0, k = 0, any = false, colloq = false;
+    const d0 = dg(W(0));
+    if(d0 !== null && W(1) === "trăm"){
+      v = d0 * 100; k = 2; any = true;
+      if(W(k) === "linh" || W(k) === "lẻ"){ k++; const d = dg(W(k)); if(d !== null){ v += d; k++; } return { v, j2: j + k, colloq }; }
+      if(vpHas(VP_HALF, W(k))){ v += 50; k++; return { v, j2: j + k, colloq }; }
+    }
+    if(W(k) === "mười"){
+      v += 10; k++;
+      const d = dg(W(k)); if(d !== null){ v += d; k++; }
+      return { v, j2: j + k, colloq };
+    }
+    const dt = dg(W(k));
+    if(dt !== null && (W(k + 1) === "mươi" || W(k + 1) === "chục")){
+      v += dt * 10; k += 2;
+      const d = dg(W(k)); if(d !== null){ v += d; k++; }
+      return { v, j2: j + k, colloq };
+    }
+    if(dt !== null){
+      if(any){ v += dt * 10; k++; colloq = true; } // "hai trăm năm" nói tắt = 250
+      else { v = dt; k++; any = true; }
+    }
+    return any ? { v, j2: j + k, colloq } : null;
   }
-  function parseSpokenAmount(raw){
-    let s = String(raw || "").toLowerCase().trim();
-    if(/triệu/.test(s)){
-      const parts = s.split("triệu");
-      const millionsPart = parts[0].trim();
-      const remainderPart = (parts[1] || "").replace(/\b(nghìn|ngàn|đồng|vnđ|vnd|k)\b/g, " ").trim();
-      let millions = parseSpokenAmountPlain(millionsPart);
-      if(millions === null) millions = 1; // nói tắt "triệu hai" (không nói rõ "một triệu") -> mặc định 1 triệu
-      let remainder = 0;
-      if(remainderPart){
-        const remWords = remainderPart.split(/\s+/).filter(Boolean);
-        const remVal = parseSpokenAmountPlain(remainderPart);
-        if(remVal !== null){
-          // nói tắt kiểu "một triệu hai" (ý là 1 triệu HAI TRĂM nghìn) -> nếu phần dư chỉ là
-          // đúng 1 chữ số đơn (không kèm "trăm"/"mươi"/"nghìn") thì hiểu là hàng trăm nghìn.
-          const bareDigit = remWords.length === 1 && remVal < 10;
-          remainder = bareDigit ? remVal * 100 : remVal;
+  // Một "lượng": số bằng chữ số (có thể kèm "trăm"/"chục") hoặc số bằng chữ.
+  function vpReadQuantity(tk, j){
+    const t = tk[j];
+    if(!t) return null;
+    if(t.num !== null){
+      let q = t.num, j2 = j + 1;
+      const nx = tk[j2];
+      if(nx && nx.num === null){
+        if(nx.t === "trăm"){ q *= 100; j2++; if(tk[j2] && tk[j2].num === null && vpHas(VP_HALF, tk[j2].t)){ q += 50; j2++; } }
+        else if(nx.t === "chục"){ q *= 10; j2++; }
+      }
+      return { q, j2, digit: true, grouped: t.grouped, colloq: false };
+    }
+    const r = vpReadSmall(tk, j);
+    return r ? { q: r.v, j2: r.j2, digit: false, grouped: false, colloq: r.colloq } : null;
+  }
+  // Cụm tiền bắt đầu ở token i. Trả về null nếu không phải tiền.
+  function vpMoneyAt(tk, i){
+    let j = i, total = 0, lastScale = 0, hasUnit = false, digit = false, grouped = false, colloq = false, slang = false, any = false, first = true, dong = false;
+    for(;;){
+      let q = vpReadQuantity(tk, j);
+      if(!q && first && tk[j] && tk[j].num === null && (tk[j].t === "triệu" || tk[j].t === "củ")) q = { q: 1, j2: j, digit: false, grouped: false, colloq: false }; // "triệu hai"
+      if(!q) break;
+      first = false;
+      if(q.digit){ digit = true; if(q.grouped) grouped = true; }
+      if(q.colloq) colloq = true;
+      const nx = tk[q.j2];
+      const sc = (nx && nx.num === null && vpHas(VP_SCALE, nx.t)) ? VP_SCALE[nx.t] : 0;
+      if(sc && (lastScale === 0 || sc < lastScale)){
+        total += q.q * sc; lastScale = sc; any = true; hasUnit = true; j = q.j2 + 1;
+        if(nx.t === "củ") slang = true;
+        if(tk[j] && tk[j].num === null && vpHas(VP_HALF, tk[j].t)){ total += sc / 2; j++; break; }
+        continue;
+      }
+      if(lastScale === 0 && nx && nx.num === null && nx.t === "lít" && !vpHas(VP_LIQUID, tk[q.j2 + 1] ? tk[q.j2 + 1].t : null)){
+        total += q.q * 1e5; slang = true; hasUnit = true; any = true; j = q.j2 + 1; break; // "hai lít" = 200 nghìn
+      }
+      if(lastScale === 0){
+        total += q.q; any = true; j = q.j2;
+        if(tk[j] && tk[j].num === null && /^(đồng|đ|vnd|vnđ)$/.test(tk[j].t)){ dong = true; hasUnit = true; j++; }
+        break;
+      }
+      // Số đứng trơ sau "triệu": "3 triệu 5" = 3,5 triệu; "1 triệu 250" = 1,25 triệu.
+      if(lastScale >= 1e6 && q.q > 0 && q.q < 1000){
+        total += q.q < 10 ? q.q * lastScale / 10 : (q.q < 100 ? q.q * lastScale / 100 : q.q * lastScale / 1000);
+        j = q.j2;
+      }
+      break; // sau "nghìn" không đọc số trơ (tránh "30 nghìn năm 2026" thành 30,5)
+    }
+    if(!any || total <= 0) return null;
+    const bare = !hasUnit;
+    const amount = Math.round((bare ? (total < 1000 ? total : total / 1000) : total / 1000) * 1000) / 1000;
+    return { j, total, bare, amount, digit, grouped, colloq, slang, dong, hasUnit };
+  }
+
+  // "ngày 15", "mùng 5", "ngày 15 tháng 10" -> số ngày hợp lệ 1..max
+  function vpReadDayNumber(tk, j, max){
+    const t = tk[j];
+    if(!t) return null;
+    if(t.num !== null){ return (Number.isInteger(t.num) && t.num >= 1 && t.num <= max) ? { v: t.num, j2: j + 1 } : null; }
+    const r = vpReadSmall(tk, j);
+    return (r && r.v >= 1 && r.v <= max) ? { v: r.v, j2: r.j2 } : null;
+  }
+  // Tìm các cụm chỉ thời gian. Trả về [{s,e,kind:"rel"|"abs", offset|day|month}]
+  function vpFindDates(tk){
+    const out = [];
+    for(let i = 0; i < tk.length; i++){
+      const t = tk[i];
+      if(t.num !== null) continue;
+      const n1 = tk[i + 1], n2 = tk[i + 2];
+      if((t.t === "hôm" || t.t === "bữa") && n1 && n1.num === null && vpHas(VP_REL, n1.t)){
+        const s = (i > 0 && tk[i - 1].t === "ngày") ? i - 1 : i;
+        out.push({ s, e: i + 1, kind: "rel", offset: VP_REL[n1.t] }); i += 1; continue;
+      }
+      if(vpHas(VP_PART, t.t) && n1 && n1.num === null){
+        if(n1.t === "nay" || n1.t === "qua"){ out.push({ s: i, e: i + 1, kind: "rel", offset: n1.t === "nay" ? 0 : -1 }); i += 1; continue; }
+        if(n1.t === "hôm" && n2 && n2.num === null && (n2.t === "nay" || n2.t === "qua")){ out.push({ s: i, e: i + 2, kind: "rel", offset: n2.t === "nay" ? 0 : -1 }); i += 2; continue; }
+      }
+      if(t.t === "ngày" || t.t === "mùng" || t.t === "mồng"){
+        const r = vpReadDayNumber(tk, i + 1, 31);
+        if(r){
+          let e = r.j2 - 1, month = null;
+          if(tk[r.j2] && tk[r.j2].num === null && tk[r.j2].t === "tháng"){
+            const m = vpReadDayNumber(tk, r.j2 + 1, 12);
+            if(m){ month = m.v; e = m.j2 - 1; }
+          }
+          out.push({ s: i, e, kind: "abs", day: r.v, month }); i = e; continue;
         }
       }
-      return millions * 1000 + remainder;
     }
-    return parseSpokenAmountPlain(s);
+    return out;
+  }
+  function vpResolveDate(spec, ctx){
+    const now = ctx.now;
+    if(!spec || spec.kind === "rel"){
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (spec ? spec.offset : 0));
+      return { day: d.getDate(), monthKey: d.getFullYear() + "-" + vpPad(d.getMonth() + 1), bad: false, said: !!spec, rel: true };
+    }
+    const vy = parseInt(String(ctx.viewMonthKey).split("-")[0], 10) || now.getFullYear();
+    const mk = spec.month ? (vy + "-" + vpPad(spec.month)) : ctx.viewMonthKey;
+    const total = ctx.daysIn(mk);
+    return { day: Math.min(spec.day, total), monthKey: mk, bad: spec.day > total, said: true, rel: false };
   }
 
-  // Tách ngày nói ra: hỗ trợ "hôm nay/hôm qua/hôm kia", số viết bằng số, và số viết bằng chữ.
-  function parseSpokenDay(raw){
-    const s = String(raw || "").toLowerCase().trim();
-    const today = new Date().getDate();
-    if(/hôm nay/.test(s)) return today;
-    if(/hôm qua/.test(s)) return Math.max(1, today - 1);
-    if(/hôm kia/.test(s)) return Math.max(1, today - 2);
-    const digitMatch = s.match(/\d+/);
-    if(digitMatch) return parseInt(digitMatch[0], 10);
-    const worded = vietnameseWordsToNumber(s);
-    return worded;
+  // Các ứng viên "số tiền" trong câu. tier: 3 = có đơn vị tiền / số có dấu nhóm nghìn, 2 = có từ neo (hết/giá/tốn...) hoặc lóng,
+  // 1 = số trần, 0 = chỉ là chữ không có gì xác nhận.
+  function vpFindCandidates(tk, used){
+    const out = [];
+    for(let i = 0; i < tk.length; ){
+      if(used[i]){ i++; continue; }
+      const prev = i > 0 && !used[i - 1] && tk[i - 1].num === null ? tk[i - 1].t : null;
+      if(prev !== null && VP_NOT_MONEY_PREV.has(prev)){ i++; continue; }
+      const r = vpMoneyAt(tk, i);
+      if(!r){ i++; continue; }
+      const nxt = tk[r.j] && tk[r.j].num === null ? tk[r.j].t : null;
+      const payerAnchor = nxt === "người" && tk[r.j + 1] && tk[r.j + 1].f === "thanh"; // "850 người thanh toán ..." không phải "850 người"
+      if(r.bare && nxt !== null && VP_QTY.has(nxt) && !payerAnchor){ i = Math.max(r.j, i + 1); continue; } // "2 ly", "3 cái"...
+      // chuỗi từ neo đứng sát trước
+      let a = i, strong = false;
+      while(a - 1 >= 0 && !used[a - 1] && tk[a - 1].num === null && VP_ANCHOR_ALL.has(tk[a - 1].t)){ a--; if(VP_ANCHOR_STRONG.has(tk[a].t)) strong = true; }
+      if(!strong) a = i; // chuỗi không có từ mạnh (vd. chỉ "là") thì không nuốt
+      let tier;
+      if((r.hasUnit && !r.slang) || r.grouped) tier = 3;
+      else if(r.slang || strong) tier = 2;
+      else tier = r.digit ? 1 : 0;
+      out.push({ s: i, e: r.j - 1, a, strong, tier, r });
+      i = r.j;
+    }
+    return out;
+  }
+  function vpFindSeparator(tk, a, b){
+    let strong = -1, weak = -1;
+    for(let k = a; k <= b; k++){
+      const t = tk[k];
+      if(!t || t.num !== null) continue;
+      if(t.t === "sau" && tk[k + 1] && tk[k + 1].t === "đó" && k + 1 <= b){ strong = k; continue; }
+      if(vpHas(VP_SEP_STRONG, t.t)) strong = k; else if(vpHas(VP_SEP_WEAK, t.t)) weak = k;
+    }
+    return strong >= 0 ? strong : weak;
   }
 
-  // Tách "người thanh toán" nói ra thành đúng id danh mục hiện có (Chồng tính, Vợ tính, ...).
-  function parseSpokenCategory(raw){
-    const s = stripDiacritics(raw || "");
-    if(!s.trim()) return "ca_nhan";
-    const hasChong = /\b(chong|anh)\b/.test(s);
-    const hasVo = /\b(vo|vk|em)\b/.test(s);
-    const hasThieu = /thieu|no\b/.test(s);
-    const hasChung = /chung/.test(s);
-    if(hasThieu && hasChong) return "ck_thieu";
-    if(hasThieu && hasVo) return "vk_thieu";
-    if(hasChung && hasChong) return "ck_chung";
-    if(hasChung && hasVo) return "vk_chung";
-    if(hasChong) return "ck_tinh";
-    if(hasVo) return "vk_tinh";
-    return "ca_nhan";
+  // words: mảng từ đã bỏ dấu, vd. ["chong","tinh","chung"] -> "ck_chung"
+  function vpCategory(w){
+    const has = (x) => w.indexOf(x) !== -1;
+    if(has("rieng") || (has("ca") && has("nhan"))) return "ca_nhan";
+    const ck = has("chong") || has("ck") || has("anh");
+    const vk = has("vo") || has("vk") || has("em");
+    if(ck === vk) return null; // không có ai, hoặc nhắc cả hai -> mơ hồ
+    const who = ck ? "ck" : "vk";
+    if(has("thieu") || has("no")) return who + "_thieu";
+    if(has("chung")) return who + "_chung";
+    return who + "_tinh";
   }
-
-  // Tách câu nói thành các trường theo từ khoá neo, không phụ thuộc thứ tự nói.
-  // Mỗi trường có nhiều từ đồng nghĩa để hiểu được cách nói tự nhiên hơn (không bắt buộc
-  // đúng khuôn mẫu cứng như trước) — vd. "mua cà phê hết 20 chồng trả" giờ hiểu được luôn,
-  // không cần nói đủ "tên... tiền... loại...".
-  const VOICE_FIELD_KEYWORDS = {
-    day: ["ngày", "hôm nay", "hôm qua", "hôm kia"],
-    amount: ["tiền", "số tiền", "tiền là", "giá", "hết", "mất", "tốn"],
-    name: ["tên là", "tên", "mua", "khoản"],
-    payer: [
-      "loại chi tiêu", "loại", "người thanh toán", "ai thanh toán", "ai trả", "ai mua", "ai tính", "danh mục",
-      "chồng trả", "vợ trả", "anh trả", "em trả",
-      "chồng chịu", "vợ chịu",
-      "chồng tính", "vợ tính",
-      "chồng thiếu", "vợ thiếu",
-      "chồng nợ", "vợ nợ"
-    ]
-  };
-  // Các từ khoá "tự đủ nghĩa" — không cần đọc phần văn bản theo sau vì bản thân từ khoá đã
-  // mang đủ thông tin (vd. "hôm qua", "chồng trả"), khác với từ khoá cần đọc giá trị đi kèm
-  // (vd. "ngày" cần đọc số ngày theo sau, "loại" cần đọc tên danh mục theo sau).
-  const SELF_CONTAINED_KEYWORDS = {
-    day: ["hôm nay", "hôm qua", "hôm kia"],
-    payer: ["chồng trả","vợ trả","anh trả","em trả","chồng chịu","vợ chịu","chồng tính","vợ tính","chồng thiếu","vợ thiếu","chồng nợ","vợ nợ"]
-  };
-  // Từ đệm đầu câu bỏ qua khi suy luận tên khoản chi từ phần văn bản còn sót lại (dùng khi
-  // người dùng không nói rõ từ "tên"/"mua"/"khoản").
-  const LEADING_FILLER_WORDS = ["thêm", "cho", "tôi", "vào", "sổ", "khoản", "chi", "là", "cái", "một"];
-
-  function firstKeywordMatch(text, keywords){
-    const lower = text.toLowerCase();
-    for(const kw of keywords){
-      const idx = lower.indexOf(kw);
-      if(idx !== -1) return { kw, idx, end: idx + kw.length };
+  function vpFindPayer(tk, a, b, used){
+    for(let i = a; i <= b; i++){
+      if(used[i] || tk[i].num !== null) continue;
+      for(const anc of VP_ANCHORS){
+        let ok = true;
+        for(let k = 0; k < anc.length; k++){
+          const x = tk[i + k];
+          if(!x || i + k > b || used[i + k] || x.num !== null || x.f !== anc[k]){ ok = false; break; }
+        }
+        if(!ok) continue;
+        let j = i + anc.length, cnt = 0;
+        const words = [];
+        while(j <= b && !used[j] && tk[j].num === null && vpHas(VP_CATWORD, tk[j].f) && cnt < 5){ words.push(tk[j].f); j++; cnt++; }
+        const cat = vpCategory(words);
+        if(cat) return { s: i, e: j - 1, cat };
+      }
+      const f = tk[i].f;
+      if(vpHas(VP_CK, f) || vpHas(VP_VK, f)){
+        let j = i + 1;
+        const x = tk[j];
+        if(x && j <= b && !used[j] && x.num === null){
+          let verb = null;
+          if(x.f === "thanh" && tk[j + 1] && j + 1 <= b && tk[j + 1].f === "toan"){ verb = "tinh"; j += 2; }
+          else if(vpHas(VP_VERB, x.f)){ verb = VP_VERB[x.f]; j += 1; }
+          if(verb){
+            const words = [f, verb];
+            if(tk[j] && j <= b && !used[j] && tk[j].f === "chung"){ words.push("chung"); j++; }
+            const cat = vpCategory(words);
+            if(cat) return { s: i, e: j - 1, cat };
+          }
+        }
+      }
     }
     return null;
   }
-  // Cắt bỏ các khoảng [start,end) đã "dùng rồi" khỏi văn bản gốc — dùng để suy luận tên khoản
-  // chi từ phần còn sót lại sau khi đã nhận diện ngày/số tiền/danh mục.
-  function removeTextRanges(text, ranges){
-    const sorted = ranges.slice().sort((a, b) => a[0] - b[0]);
-    let result = "", cursor = 0;
-    for(const [s, e] of sorted){
-      if(s > cursor) result += text.slice(cursor, s);
-      cursor = Math.max(cursor, e);
+
+  function vpBuildName(tk, raw, a, b, used){
+    let start = a;
+    for(let k = a; k <= b; k++){ // "tên (là) X": chỉ lấy phần sau chữ "tên"
+      if(!used[k] && tk[k].num === null && tk[k].t === "tên"){
+        used[k] = true; start = k + 1;
+        if(start <= b && tk[start] && !used[start] && tk[start].t === "là"){ used[start] = true; start++; }
+        break;
+      }
     }
-    result += text.slice(cursor);
-    return result;
+    const keep = [];
+    for(let k = start; k <= b; k++) if(!used[k]) keep.push(k);
+    while(keep.length && tk[keep[0]].num === null && VP_FILLER_LEAD.has(tk[keep[0]].t)) keep.shift();
+    while(keep.length && tk[keep[keep.length - 1]].num === null && VP_FILLER_TAIL.has(tk[keep[keep.length - 1]].t)) keep.pop();
+    let out = "", prev = -1;
+    keep.forEach((k) => {
+      if(prev >= 0) out += (k === prev + 1) ? raw.slice(tk[prev].e, tk[k].s) : " ";
+      out += tk[k].t; prev = k;
+    });
+    out = out.replace(/\s+/g, " ").replace(/^[\s,.:;\-–—]+|[\s,.:;\-–—]+$/g, "");
+    return out ? out.charAt(0).toLocaleUpperCase("vi") + out.slice(1) : "";
   }
-  function stripLeadingFillerWords(s){
-    const words = s.trim().split(/\s+/).filter(Boolean);
-    while(words.length && LEADING_FILLER_WORDS.includes(words[0].toLowerCase())) words.shift();
-    return words.join(" ");
+
+  // Phân tích 1 câu -> { ok, items:[{day,monthKey,name,amount,category,catSource,reasons[]}], multi, needsReview, reason }
+  function vpParse(text, ctx){
+    const raw = vpNorm(text);
+    const res = { ok: false, raw, items: [], multi: false, needsReview: false, reason: "" };
+    if(!raw){ res.reason = "Không nghe được gì cả, thử lại nhé."; return res; }
+    const tk = vpTokens(raw), n = tk.length;
+    const used = new Array(n).fill(false);
+    const dates = vpFindDates(tk);
+    dates.forEach(d => { for(let k = d.s; k <= d.e; k++) used[k] = true; });
+
+    let cands = vpFindCandidates(tk, used);
+    if(!cands.length){ res.reason = "Không nghe thấy số tiền. Thử nói kiểu \"cà phê hết 20k chồng trả\"."; return res; }
+    if(cands.some(c => c.tier >= 1)) cands = cands.filter(c => c.tier >= 1); // chữ trơn chỉ dùng khi không còn gì khác
+
+    // Chọn các khoản: nhiều số chỉ tách thành nhiều khoản khi có từ nối (rồi/và/với...) nằm giữa.
+    let ambiguous = false;
+    const kept = [], seps = [];
+    cands.forEach((c) => {
+      if(!kept.length){ kept.push(c); return; }
+      const prev = kept[kept.length - 1];
+      const sp = vpFindSeparator(tk, prev.e + 1, c.a - 1);
+      if(sp >= 0){ kept.push(c); seps.push(sp); }
+      else if(c.tier > prev.tier){ kept[kept.length - 1] = c; }       // một bên rõ ràng mạnh hơn -> lấy bên đó
+      else if(c.tier === prev.tier){ ambiguous = true; kept[kept.length - 1] = c; } // ngang nhau -> lấy số sau, bắt xem lại
+    });
+
+    const firstDate = dates.length ? dates[0] : null;
+    for(let m = 0; m < kept.length; m++){
+      const c = kept[m];
+      const segA = m === 0 ? 0 : seps[m - 1] + 1;
+      const segB = m === kept.length - 1 ? n - 1 : seps[m] - 1;
+      if(m < seps.length) used[seps[m]] = true;
+      for(let k = c.a; k <= c.e; k++) used[k] = true;
+      let payer = vpFindPayer(tk, segA, segB, used);
+      if(!payer){ // "... 45k cá nhân", "... 45k riêng" (chỉ nhận khi đứng ngay sau số tiền, vì "đồ dùng cá nhân" có thể là tên khoản)
+        const x = tk[c.e + 1], y = tk[c.e + 2];
+        if(x && c.e + 1 <= segB && !used[c.e + 1] && x.f === "rieng") payer = { s: c.e + 1, e: c.e + 1, cat: "ca_nhan" };
+        else if(x && y && c.e + 2 <= segB && !used[c.e + 1] && !used[c.e + 2] && x.f === "ca" && y.f === "nhan") payer = { s: c.e + 1, e: c.e + 2, cat: "ca_nhan" };
+      }
+      if(payer) for(let k = payer.s; k <= payer.e; k++) used[k] = true;
+      const name = vpBuildName(tk, raw, segA, segB, used);
+      const spec = dates.filter(d => d.s >= segA && d.s <= segB)[0] || firstDate;
+      const when = vpResolveDate(spec, ctx);
+
+      const reasons = [];
+      const r = c.r;
+      let category = "ca_nhan", catSource = "default";
+      if(payer){ category = payer.cat; catSource = "said"; }
+      else if(name && ctx.lookupCategory){
+        const h = ctx.lookupCategory(vpNameKey(name));
+        if(h && h.cat){
+          category = h.cat; catSource = "history";
+          if(!(h.n >= 2 && h.agree)) reasons.push("Người trả lấy theo lần ghi trước, kiểm tra lại nhé");
+        }
+      }
+      if(!name) reasons.push("Chưa nghe rõ tên khoản chi");
+      if(r.slang) reasons.push("Cách nói tắt (củ/lít), kiểm tra lại số tiền");
+      if(c.tier === 0) reasons.push("Chưa chắc đây là số tiền");
+      if(r.bare && (!Number.isInteger(r.total) || (r.total >= 1000 && r.total < 10000))) reasons.push("Chưa rõ đơn vị tiền");
+      if(r.colloq) reasons.push("Nói tắt, kiểm tra lại số tiền");
+      if(r.amount >= 1000) reasons.push("Số tiền lớn, kiểm tra lại nhé");
+      if(r.amount < 1) reasons.push("Số tiền rất nhỏ, kiểm tra lại nhé");
+      if(ambiguous) reasons.push("Trong câu có nhiều số, kiểm tra lại số tiền");
+      if(when.bad) reasons.push("Ngày nói ra không có trong tháng này");
+      if(when.monthKey !== ctx.viewMonthKey) reasons.push("Khoản này sẽ vào " + (ctx.monthLabel ? ctx.monthLabel(when.monthKey) : when.monthKey) + ", không phải tháng đang xem");
+      res.items.push({ day: when.day, monthKey: when.monthKey, name, amount: r.amount, category, catSource, reasons });
+    }
+    res.ok = true;
+    res.multi = res.items.length > 1;
+    res.needsReview = res.multi || res.items.some(it => it.reasons.length > 0);
+    return res;
   }
 
-  function parseVoiceText(rawText){
-    const text = String(rawText || "").trim();
-    if(!text) return { ok:false, reason:"Không nghe được gì cả, thử lại nhé." };
-
-    const found = {};
-    for(const field in VOICE_FIELD_KEYWORDS){
-      const m = firstKeywordMatch(text, VOICE_FIELD_KEYWORDS[field]);
-      if(m) found[field] = m;
-    }
-    if(!found.amount) return { ok:false, reason:"Không nghe rõ \"số tiền\", thử nói lại (vd. \"...hết 20\", \"...giá 20\", \"...tốn 20\")." };
-
-    const ordered = Object.keys(found)
-      .map(field => ({ field, kwStart: found[field].idx, valStart: found[field].end }))
-      .sort((a, b) => a.kwStart - b.kwStart);
-    const segments = {};
-    const spans = {};
-    for(let i = 0; i < ordered.length; i++){
-      const cur = ordered[i];
-      const nextStart = (i + 1 < ordered.length) ? ordered[i + 1].kwStart : text.length;
-      segments[cur.field] = text.slice(cur.valStart, nextStart).trim().replace(/^[:,.\s]+/, "").replace(/[.,\s]+$/, "");
-      // Từ khoá tự đủ nghĩa (vd. "hôm nay") -> chỉ loại đúng phần chữ của từ khoá đó khỏi
-      // văn bản dùng suy luận tên, tránh nuốt nhầm tên khoản chi nằm ngay sau nó.
-      const isSelfContained = (SELF_CONTAINED_KEYWORDS[cur.field] || []).includes(found[cur.field].kw);
-      spans[cur.field] = isSelfContained ? [cur.kwStart, found[cur.field].end] : [cur.kwStart, nextStart];
-    }
-
-    const amount = parseSpokenAmount(segments.amount || "");
-    if(amount === null) return { ok:false, reason:"Không hiểu số tiền \"" + (segments.amount || "") + "\", thử nói rõ hơn." };
-
-    let name = (segments.name || "").trim();
-    if(!name){
-      // Không nói rõ từ "tên"/"mua"/"khoản" -> suy luận tên từ phần văn bản còn lại sau khi
-      // đã bỏ các đoạn ngày/số tiền/danh mục và từ đệm đầu câu.
-      const consumedRanges = ["day", "amount", "payer"].filter(f => spans[f]).map(f => spans[f]);
-      const leftover = removeTextRanges(text, consumedRanges).replace(/\s+/g, " ").trim();
-      name = stripLeadingFillerWords(leftover).replace(/^[:,.\s]+/, "").replace(/[.,\s]+$/, "");
-    }
-    if(!name) return { ok:false, reason:"Không nghe rõ tên khoản chi." };
-
-    const totalDays = daysInMonthKey(currentMonthKey);
-    const daySelfContained = found.day && SELF_CONTAINED_KEYWORDS.day.includes(found.day.kw);
-    const dayInput = daySelfContained ? found.day.kw : segments.day; // từ khoá tự đủ nghĩa -> đọc chính từ khoá, không đọc phần theo sau
-    let day = dayInput ? parseSpokenDay(dayInput) : new Date().getDate();
-    if(day === null || isNaN(day)) day = new Date().getDate();
-    day = Math.max(1, Math.min(totalDays, day));
-
-    // Dùng cả chính từ khoá neo (vd. "chồng trả") lẫn phần văn bản theo sau để suy luận danh
-    // mục — với các cụm tự nhiên kiểu này, thông tin nằm ngay trong từ khoá chứ không phải
-    // phần chữ theo sau nó.
-    const category = parseSpokenCategory((found.payer ? found.payer.kw + " " : "") + (segments.payer || ""));
-
-    return { ok:true, day, name, amount, category };
+  // Nhiều phương án nhận diện: lấy phương án đầu có kết quả; nếu các phương án khác nghe ra số tiền khác -> bắt xem lại.
+  function vpParseBest(alts, ctx){
+    const list = (alts || []).filter(a => a && String(a).trim());
+    if(!list.length) return { ok: false, raw: "", items: [], multi: false, needsReview: false, reason: "Không nghe được gì cả, thử lại nhé." };
+    const parsed = list.slice(0, 5).map(a => vpParse(a, ctx));
+    let pick = parsed.find(p => p.ok);
+    if(!pick) return parsed[0];
+    const idx = parsed.indexOf(pick);
+    parsed.slice(idx + 1, idx + 3).forEach((o) => {
+      if(!o.ok || o.items.length !== pick.items.length) return;
+      if(o.items.some((it, k) => Math.abs(it.amount - pick.items[k].amount) > 1e-9)){
+        pick.items.forEach(it => { if(it.reasons.indexOf("Nghe có nhiều cách hiểu số tiền") === -1) it.reasons.push("Nghe có nhiều cách hiểu số tiền"); });
+        pick.needsReview = true;
+      }
+    });
+    pick.heardAlts = list;
+    return pick;
   }
+  // </voice-parser>
 
   // ---------- Toast xác nhận + Hoàn tác ----------
   const voiceToastWrap = document.getElementById("voiceToastWrap");
@@ -2236,26 +2405,72 @@
     if(cb) cb();
   });
 
-  function addEntryFromVoice(parsed){
-    const newEntry = {
-      id: genEntryId(), day: parsed.day, name: parsed.name, amount: parsed.amount,
-      amountFormula: "", category: parsed.category, note: "", updatedAt: Date.now()
-    };
-    entries.push(newEntry);
-    commit();
-    render();
-    queueSync("addEntry", newEntry);
+  // ---------- Ghi khoản chi lấy từ giọng nói vào sổ ----------
+  // Gợi ý người trả theo lịch sử: "cà phê" lần trước ai trả thì lần này gợi ý như vậy (chỉ khi người dùng không nói).
+  let voiceNameIndex = null;
+  function voiceBuildIndex(){
+    const idx = {};
+    Object.keys(monthsData).forEach((mk) => {
+      (monthsData[mk] || []).forEach((e) => {
+        const k = vpNameKey(e.name);
+        if(!k || !catById[e.category]) return;
+        (idx[k] = idx[k] || []).push({ cat: e.category, t: Number(e.updatedAt) || 0, mk });
+      });
+    });
+    Object.keys(idx).forEach((k) => idx[k].sort((a, b) => (b.t - a.t) || (a.mk < b.mk ? 1 : -1)));
+    voiceNameIndex = idx;
+  }
+  function voiceLookupCategory(key){
+    if(!voiceNameIndex) voiceBuildIndex();
+    const hits = voiceNameIndex[key];
+    if(!hits || !hits.length) return null;
+    return { cat: hits[0].cat, n: hits.length, agree: hits.length >= 2 && hits[0].cat === hits[1].cat };
+  }
+  function voiceCtx(){
+    return { now: new Date(), viewMonthKey: currentMonthKey, daysIn: daysInMonthKey, monthLabel, lookupCategory: voiceLookupCategory };
+  }
 
-    const cat = catById[parsed.category] || catById.ca_nhan;
-    const catLabel = cat.label.replace(/\s*·\s*chia\s*\d+/i, "");
-    const summary = "Đã thêm: <b>" + escapeHtml(newEntry.name) + "</b> · " + money(newEntry.amount) +
-      " · " + escapeHtml(catLabel) + " · Ngày " + newEntry.day;
-    showVoiceToast(false, summary, () => {
-      entries = entries.filter(en => en.id !== newEntry.id);
+  // items: [{ monthKey, day, name, amount, amountFormula, category }] -> trả về danh sách đã thêm (để Hoàn tác).
+  // Khoản thuộc tháng khác tháng đang xem thì chuyển sang tháng đó trước (queueSync gắn theo tháng đang mở).
+  function voiceCommitItems(items){
+    const added = [];
+    items.forEach((it) => {
+      if(it.monthKey !== currentMonthKey) switchMonth(it.monthKey);
+      const e = {
+        id: genEntryId(), day: Math.max(1, Math.min(daysInMonthKey(currentMonthKey), Number(it.day) || 1)),
+        name: it.name, amount: it.amount, amountFormula: it.amountFormula || "",
+        category: it.category, note: "", updatedAt: Date.now()
+      };
+      entries.push(e);
       commit();
       render();
-      queueSync("deleteEntry", { id: newEntry.id });
+      queueSync("addEntry", e);
+      added.push({ monthKey: currentMonthKey, id: e.id, entry: e });
     });
+    return added;
+  }
+  function voiceUndo(added){
+    added.forEach((a) => {
+      if(currentMonthKey !== a.monthKey) switchMonth(a.monthKey, { skipPull: true });
+      entries = entries.filter(en => en.id !== a.id);
+      commit();
+      render();
+      queueSync("deleteEntry", { id: a.id });
+    });
+  }
+  function voiceAnnounceAdded(added){
+    if(!added.length) return;
+    let summary;
+    if(added.length === 1){
+      const e = added[0].entry;
+      const cat = catById[e.category] || catById.ca_nhan;
+      summary = "Đã thêm: <b>" + escapeHtml(e.name) + "</b> · " + money(e.amount) +
+        " · " + escapeHtml(cat.label.replace(/\s*·\s*chia\s*\d+/i, "")) + " · Ngày " + e.day;
+    }else{
+      const total = added.reduce((s, a) => s + Number(a.entry.amount || 0), 0);
+      summary = "Đã thêm <b>" + added.length + " khoản</b> · tổng " + money(total);
+    }
+    showVoiceToast(false, summary, () => voiceUndo(added));
   }
 
   // ---------- Nhấn giữ 1 khoản chi = mở popup "Thêm khoản chi" đã điền sẵn (kiểu giống popup Sửa) ----------
@@ -2270,62 +2485,314 @@
     openModal("add", draft, "Nhân bản khoản chi", "Nhân bản");
   }
 
-  // ---------- Ghi âm giọng nói ----------
+  // ---------- Nghe giọng nói + bảng "Đang nghe" / "Xem lại" ----------
+  // Luồng: bấm mic -> bảng hiện chữ ngay khi đang nói (interim) -> xong thì phân tích:
+  //   chắc chắn (1 khoản, có đơn vị/từ khoá rõ, số hợp lý) -> thêm luôn + Hoàn tác;
+  //   chưa chắc / nhiều khoản / tháng khác -> chuyển sang bảng xem lại để sửa rồi mới ghi.
   const fabMicBtn = document.getElementById("fabMicBtn");
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let voiceRecognizer = null;
-  let voiceListening = false;
+  const vsOverlay = document.getElementById("voiceOverlay");
+  const vsTitle = document.getElementById("voiceSheetTitle");
+  const vsSub = document.getElementById("vsSub");
+  const vsListenPane = document.getElementById("vsListen");
+  const vsReviewPane = document.getElementById("vsReview");
+  const vsTranscript = document.getElementById("vsTranscript");
+  const vsRowsEl = document.getElementById("vsRows");
+  const vsErrorEl = document.getElementById("vsError");
+  const vsSecondaryBtn = document.getElementById("vsSecondaryBtn");
+  const vsPrimaryBtn = document.getElementById("vsPrimaryBtn");
+  const vsCloseBtn = document.getElementById("vsCloseBtn");
+  const VS_MAX_LISTEN_MS = 15000;
+  const VS_FATAL = {
+    "not-allowed": "Bạn chưa cho phép dùng micro. Vào cài đặt trình duyệt để cấp quyền micro cho trang này.",
+    "service-not-allowed": "Trình duyệt không cho dùng nhận diện giọng nói ở đây. Thử mở app bằng Chrome.",
+    "audio-capture": "Không tìm thấy micro trên thiết bị này.",
+    "network": "Lỗi mạng khi nhận diện giọng nói, thử lại nhé.",
+    "language-not-supported": "Thiết bị chưa hỗ trợ nhận diện tiếng Việt."
+  };
+  const vs = {
+    open: false, mode: "idle", rec: null, finals: [], interim: "", restarts: 0, startedAt: 0,
+    userStopped: false, lastError: "", maxTimer: null, endGuard: null, rows: [], heard: ""
+  };
+  const vsBuzz = (p) => { try{ if(navigator.vibrate) navigator.vibrate(p); }catch(err){ /* thiết bị không rung được */ } };
+  const vsCatLabel = (c) => c.label.replace(/\s*·\s*chia\s*\d+/i, "");
+
+  function vsSetMode(mode){
+    vs.mode = mode;
+    vsOverlay.classList.toggle("is-listening", mode === "listen");
+    vsOverlay.classList.toggle("is-review", mode === "review");
+    fabMicBtn.classList.toggle("listening", mode === "listen");
+    fabMicBtn.setAttribute("aria-pressed", mode === "listen" ? "true" : "false");
+    vsListenPane.hidden = mode !== "listen";
+    vsReviewPane.hidden = mode !== "review";
+    if(mode === "listen"){
+      vsTitle.textContent = "Đang nghe…";
+      vsSub.textContent = "Nói tên khoản, số tiền và người trả";
+      vsSecondaryBtn.textContent = "Huỷ";
+      vsPrimaryBtn.textContent = "Xong";
+    }else if(mode === "review"){
+      vsTitle.textContent = "Xem lại trước khi thêm";
+      vsSub.textContent = vs.heard ? "Nghe được: “" + vs.heard + "”" : "";
+      vsSecondaryBtn.textContent = "Nói lại";
+    }
+  }
+  function vsSetError(msg){ vsErrorEl.textContent = msg || ""; }
+  function vsRenderTranscript(){
+    const fin = vs.finals.map(a => a[0]).join(" ").trim();
+    vsTranscript.innerHTML = (fin ? '<span class="fin">' + escapeHtml(fin) + "</span> " : "") +
+      (vs.interim ? '<span class="int">' + escapeHtml(vs.interim) + "</span>" : "");
+    vsTranscript.classList.toggle("empty", !fin && !vs.interim);
+  }
+  // Các phương án nghe được cho cả câu: phần đã chốt (phương án đầu) + các phương án của đoạn cuối.
+  function vsAlternatives(){
+    const segs = vs.finals.slice();
+    if(vs.interim.trim()) segs.push([vs.interim]);
+    if(!segs.length) return [];
+    const prefix = segs.slice(0, -1).map(s => s[0]).join(" ");
+    return segs[segs.length - 1].map(a => (prefix + " " + a).trim()).filter(Boolean);
+  }
+
+  function vsOpen(){
+    voiceBuildIndex();
+    vs.open = true;
+    vsOverlay.classList.add("show");
+    vsOverlay.setAttribute("aria-hidden", "false");
+    vsStartSession();
+  }
+  function vsClose(){
+    clearTimeout(vs.maxTimer);
+    clearTimeout(vs.endGuard);
+    if(vs.rec){ const r = vs.rec; vs.rec = null; try{ r.abort(); }catch(err){ /* đã dừng */ } } // vs.rec = null -> mọi sự kiện muộn bị bỏ qua
+    vs.open = false;
+    vs.mode = "idle";
+    vsOverlay.classList.remove("show", "is-listening", "is-review");
+    vsOverlay.setAttribute("aria-hidden", "true");
+    fabMicBtn.classList.remove("listening");
+    fabMicBtn.setAttribute("aria-pressed", "false");
+  }
+  function vsStartSession(){
+    vs.finals = []; vs.interim = ""; vs.restarts = 0; vs.userStopped = false; vs.lastError = ""; vs.heard = "";
+    vs.startedAt = Date.now();
+    vsSetError("");
+    vsSetMode("listen");
+    vsRenderTranscript();
+    clearTimeout(vs.maxTimer);
+    vs.maxTimer = setTimeout(() => { if(vs.mode === "listen") vsStopListening(); }, VS_MAX_LISTEN_MS);
+    vsBeginRecognition();
+  }
+  function vsStopListening(){
+    vs.userStopped = true;
+    clearTimeout(vs.endGuard);
+    vs.endGuard = setTimeout(() => { if(vs.open && vs.mode === "listen") vsOnEnd(); }, 3500); // phòng trình duyệt không bắn sự kiện "end"
+    try{ if(vs.rec) vs.rec.stop(); }catch(err){ vsOnEnd(); }
+  }
+  function vsBeginRecognition(){
+    const rec = new SpeechRecognitionCtor();
+    rec.lang = "vi-VN";
+    rec.continuous = false;
+    rec.interimResults = true;   // hiện chữ ngay khi đang nói
+    rec.maxAlternatives = 5;     // lấy nhiều phương án, chọn cái phân tích ra kết quả hợp lệ
+    vs.rec = rec;
+    vs.lastError = "";
+    rec.onstart = () => { if(rec === vs.rec) vsBuzz(10); };
+    rec.onresult = (e) => {
+      if(rec !== vs.rec) return;
+      let interim = "";
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const r = e.results[i];
+        if(r.isFinal){
+          const alts = [];
+          for(let k = 0; k < r.length; k++) alts.push(r[k].transcript);
+          vs.finals.push(alts);
+        }else{
+          interim += r[0].transcript;
+        }
+      }
+      vs.interim = interim;
+      vsRenderTranscript();
+    };
+    rec.onerror = (e) => { if(rec === vs.rec) vs.lastError = (e && e.error) || "error"; };
+    rec.onend = () => { if(rec === vs.rec) vsOnEnd(); };
+    try{
+      rec.start();
+    }catch(err){
+      vsClose();
+      showVoiceToast(true, "Không khởi động được micro: " + escapeHtml(err && err.message ? err.message : String(err)), null);
+    }
+  }
+  function vsOnEnd(){
+    if(!vs.open || vs.mode !== "listen") return;
+    clearTimeout(vs.endGuard);
+    const err = vs.lastError;
+    vs.lastError = "";
+    if(err === "aborted") return;
+    if(err && VS_FATAL[err]){ vsClose(); showVoiceToast(true, VS_FATAL[err], null); return; }
+    const alts = vsAlternatives();
+    if(!alts.length){ vsClose(); showVoiceToast(true, "Không nghe thấy giọng nói, thử lại nhé.", null); return; }
+    const parsed = vpParseBest(alts, voiceCtx());
+    // Chưa ra số tiền mà người dùng chưa bấm Xong -> có thể chỉ ngừng lấy hơi: nghe tiếp (giữ phần đã nghe), tối đa 2 lần.
+    if(!parsed.ok && !vs.userStopped && vs.restarts < 2 && (Date.now() - vs.startedAt) < 12000){
+      vs.restarts++;
+      vs.interim = "";
+      vsBeginRecognition();
+      return;
+    }
+    vsFinish(parsed, alts[0]);
+  }
+  function vsFinish(parsed, heard){
+    clearTimeout(vs.maxTimer);
+    if(!parsed.ok){
+      vsClose();
+      showVoiceToast(true, escapeHtml(parsed.reason || "Không hiểu câu vừa nói.") +
+        (heard ? ' <span style="color:var(--text-faint)">— nghe được: "' + escapeHtml(heard) + '"</span>' : ""), null);
+      return;
+    }
+    if(!parsed.needsReview){
+      vsClose();
+      vsBuzz([12, 40, 12]);
+      voiceAnnounceAdded(voiceCommitItems(parsed.items.map(it => ({
+        monthKey: it.monthKey, day: it.day, name: it.name, amount: it.amount, amountFormula: "", category: it.category
+      }))));
+      return;
+    }
+    vsOpenReview(parsed, heard);
+  }
+
+  // ----- Bảng xem lại -----
+  function vsMoneyText(text){
+    const v = evalAmountExpr(text);
+    return (isFinite(v) && v > 0) ? "= " + money(v) : "Số tiền chưa hợp lệ";
+  }
+  function vsRowHtml(r, i, many){
+    const days = daysInMonthKey(r.monthKey);
+    let dayOpts = "";
+    for(let d = 1; d <= days; d++) dayOpts += '<option value="' + d + '"' + (d === r.day ? " selected" : "") + ">Ngày " + d + "</option>";
+    const catOpts = CATS.map(c => '<option value="' + c.id + '"' + (c.id === r.category ? " selected" : "") + ">" + escapeHtml(vsCatLabel(c)) + "</option>").join("");
+    const months = Array.from(new Set([r.monthKey, currentMonthKey, DEFAULT_MONTH_KEY]));
+    const monthSel = months.length > 1
+      ? '<select class="vs-month" data-f="month" aria-label="Tháng">' + months.map(mk => '<option value="' + escapeHtml(mk) + '"' + (mk === r.monthKey ? " selected" : "") + ">" + escapeHtml(monthLabel(mk)) + "</option>").join("") + "</select>"
+      : "";
+    const why = r.reasons.length ? '<ul class="vs-why">' + r.reasons.map(x => "<li>" + escapeHtml(x) + "</li>").join("") + "</ul>" : "";
+    const del = many ? '<button type="button" class="icon-btn vs-del" data-act="del" aria-label="Bỏ khoản này"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="16"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' : "";
+    return '<div class="vs-row" data-i="' + i + '">' +
+      '<div class="vs-line">' +
+        '<input class="vs-name" type="text" value="' + escapeHtml(r.name) + '" placeholder="Tên khoản chi" aria-label="Tên khoản chi" autocomplete="off" enterkeyhint="next">' + del +
+      "</div>" +
+      '<div class="vs-line">' +
+        '<label class="vs-amt"><input class="vs-amount" type="text" inputmode="decimal" value="' + escapeHtml(r.amountText) + '" aria-label="Số tiền, tính bằng nghìn đồng" autocomplete="off"><span>nghìn</span></label>' +
+        '<output class="vs-money">' + escapeHtml(vsMoneyText(r.amountText)) + "</output>" +
+      "</div>" +
+      '<div class="vs-line vs-pick">' +
+        '<select class="vs-cat" data-f="cat" aria-label="Người trả">' + catOpts + "</select>" +
+        '<select class="vs-day" data-f="day" aria-label="Ngày">' + dayOpts + "</select>" + monthSel +
+      "</div>" + why +
+    "</div>";
+  }
+  function vsRenderRows(){
+    const many = vs.rows.length > 1;
+    vsRowsEl.innerHTML = vs.rows.map((r, i) => vsRowHtml(r, i, many)).join("");
+    vsPrimaryBtn.textContent = many ? "Thêm " + vs.rows.length + " khoản" : "Thêm vào sổ";
+  }
+  function vsOpenReview(parsed, heard){
+    vs.heard = heard || "";
+    vs.rows = parsed.items.map(it => ({
+      monthKey: it.monthKey, day: it.day, name: it.name, amountText: String(it.amount), category: it.category, reasons: it.reasons.slice()
+    }));
+    vsSetError("");
+    vsSetMode("review");
+    vsRenderRows();
+    vsBuzz(15);
+    const empty = vsRowsEl.querySelector(".vs-name[value='']");
+    setTimeout(() => { try{ (empty || vsPrimaryBtn).focus({ preventScroll: true }); }catch(err){ /* bỏ qua */ } }, 60);
+  }
+  function vsConfirmReview(){
+    const items = [];
+    let firstBad = null;
+    vs.rows.forEach((r, i) => {
+      const name = r.name.trim();
+      const amt = evalAmountExpr(r.amountText);
+      const okName = !!name, okAmt = isFinite(amt) && amt > 0;
+      const rowEl = vsRowsEl.querySelector('.vs-row[data-i="' + i + '"]');
+      if(rowEl){
+        rowEl.querySelector(".vs-name").classList.toggle("bad", !okName);
+        rowEl.querySelector(".vs-amount").classList.toggle("bad", !okAmt);
+        if(!firstBad && !okName) firstBad = rowEl.querySelector(".vs-name");
+        if(!firstBad && !okAmt) firstBad = rowEl.querySelector(".vs-amount");
+      }
+      if(okName && okAmt){
+        items.push({
+          monthKey: r.monthKey, day: r.day, name, amount: Math.round(amt * 1000) / 1000,
+          amountFormula: isAmountFormula(r.amountText) ? r.amountText.trim() : "", category: r.category
+        });
+      }
+    });
+    if(firstBad){
+      vsSetError("Điền tên và số tiền hợp lệ cho mọi khoản, hoặc bấm × để bỏ khoản đó.");
+      try{ firstBad.focus(); }catch(err){ /* bỏ qua */ }
+      return;
+    }
+    vsClose();
+    vsBuzz([12, 40, 12]);
+    voiceAnnounceAdded(voiceCommitItems(items));
+  }
 
   if(!SpeechRecognitionCtor){
     fabMicBtn.addEventListener("click", () => {
       showVoiceToast(true, "Trình duyệt này chưa hỗ trợ nhận diện giọng nói. Hãy dùng Chrome/Edge trên máy tính hoặc điện thoại Android.", null);
     });
   }else{
-    voiceRecognizer = new SpeechRecognitionCtor();
-    voiceRecognizer.lang = "vi-VN";
-    voiceRecognizer.continuous = false;
-    voiceRecognizer.interimResults = false;
-    voiceRecognizer.maxAlternatives = 1;
-
-    function setListening(on){
-      voiceListening = on;
-      fabMicBtn.classList.toggle("listening", on);
-    }
-
-    voiceRecognizer.addEventListener("start", () => setListening(true));
-    voiceRecognizer.addEventListener("end", () => setListening(false));
-    voiceRecognizer.addEventListener("error", (e) => {
-      setListening(false);
-      const msgs = {
-        "not-allowed": "Bạn chưa cho phép dùng micro. Vào cài đặt trình duyệt để cấp quyền micro cho trang này.",
-        "no-speech": "Không nghe thấy giọng nói, thử lại nhé.",
-        "audio-capture": "Không tìm thấy micro trên thiết bị này.",
-        "network": "Lỗi mạng khi nhận diện giọng nói, thử lại."
-      };
-      showVoiceToast(true, msgs[e.error] || ("Lỗi nhận diện giọng nói: " + e.error), null);
-    });
-    voiceRecognizer.addEventListener("result", (e) => {
-      const transcript = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : "";
-      const parsed = parseVoiceText(transcript);
-      if(!parsed.ok){
-        showVoiceToast(true, (parsed.reason || "Không hiểu câu vừa nói.") + (transcript ? ' <span style="color:var(--text-faint)">— nghe được: "' + escapeHtml(transcript) + '"</span>' : ""), null);
-        return;
-      }
-      addEntryFromVoice(parsed);
-    });
-
     fabMicBtn.addEventListener("click", () => {
-      if(voiceListening){
-        voiceRecognizer.stop();
-        return;
-      }
+      if(vs.open){ if(vs.mode === "listen") vsStopListening(); return; }
       hideVoiceToast();
-      try{
-        voiceRecognizer.start();
-      }catch(err){
-        showVoiceToast(true, "Không khởi động được micro: " + err.message, null);
+      vsOpen();
+    });
+    vsPrimaryBtn.addEventListener("click", () => {
+      if(vs.mode === "listen") vsStopListening();
+      else if(vs.mode === "review") vsConfirmReview();
+    });
+    vsSecondaryBtn.addEventListener("click", () => {
+      if(vs.mode === "review") vsStartSession(); // "Nói lại"
+      else vsClose();                            // "Huỷ"
+    });
+    vsCloseBtn.addEventListener("click", vsClose);
+    // Bấm nền (hoặc nút Back / phím Esc, vốn được chuyển thành bấm nền) = đóng.
+    vsOverlay.addEventListener("click", (e) => { if(e.target === vsOverlay) vsClose(); });
+    vsRowsEl.addEventListener("input", (e) => {
+      const rowEl = e.target.closest(".vs-row");
+      const r = rowEl ? vs.rows[Number(rowEl.dataset.i)] : null;
+      if(!r) return;
+      if(e.target.classList.contains("vs-name")){ r.name = e.target.value; e.target.classList.remove("bad"); }
+      else if(e.target.classList.contains("vs-amount")){
+        r.amountText = e.target.value;
+        e.target.classList.remove("bad");
+        const out = rowEl.querySelector(".vs-money");
+        out.textContent = vsMoneyText(r.amountText);
+        out.classList.toggle("bad", !(evalAmountExpr(r.amountText) > 0));
+      }
+      vsSetError("");
+    });
+    vsRowsEl.addEventListener("change", (e) => {
+      const rowEl = e.target.closest(".vs-row");
+      const r = rowEl ? vs.rows[Number(rowEl.dataset.i)] : null;
+      if(!r) return;
+      const f = e.target.getAttribute("data-f");
+      if(f === "cat") r.category = e.target.value;
+      else if(f === "day") r.day = Number(e.target.value) || 1;
+      else if(f === "month"){
+        r.monthKey = e.target.value;
+        r.day = Math.min(r.day, daysInMonthKey(r.monthKey));
+        r.reasons = r.reasons.filter(x => x.indexOf("không phải tháng đang xem") === -1 && x.indexOf("Ngày nói ra") === -1);
+        vsRenderRows(); // số ngày của tháng đổi -> dựng lại danh sách ngày
       }
     });
+    vsRowsEl.addEventListener("click", (e) => {
+      const del = e.target.closest("[data-act='del']");
+      if(!del) return;
+      vs.rows.splice(Number(del.closest(".vs-row").dataset.i), 1);
+      if(!vs.rows.length){ vsClose(); return; }
+      vsRenderRows();
+    });
+    document.addEventListener("visibilitychange", () => { if(document.hidden && vs.open && vs.mode === "listen") vsClose(); });
   }
 
   // ---------- Gộp 2 (hoặc nhiều) khoản chi làm 1 ----------

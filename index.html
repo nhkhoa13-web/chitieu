@@ -447,6 +447,34 @@
     </div>
   </div>
 
+  <!-- Bảng giọng nói: "Đang nghe" (hiện chữ trực tiếp) rồi "Xem lại trước khi thêm". Dùng chung cơ chế .modal-overlay nên nút Back/Esc đóng được. -->
+  <div class="modal-overlay voice-overlay" id="voiceOverlay" aria-hidden="true">
+    <div class="modal voice-sheet">
+      <div class="vs-head">
+        <div class="vs-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="vs-titles">
+          <h3 class="modal-title" id="voiceSheetTitle">Đang nghe…</h3>
+          <p class="vs-sub" id="vsSub"></p>
+        </div>
+        <button type="button" class="icon-btn" id="vsCloseBtn" aria-label="Đóng" title="Đóng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="18" height="18"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="vs-listen" id="vsListen">
+        <p class="vs-transcript empty" id="vsTranscript"></p>
+        <p class="vs-hint">Ví dụ: “cà phê hết 20k chồng trả”, “hôm qua đổ xăng 70 nghìn vợ trả”, “cơm 30k rồi nước 20k”.</p>
+      </div>
+      <div class="vs-review" id="vsReview" hidden>
+        <div class="vs-rows" id="vsRows"></div>
+      </div>
+      <p class="vs-error" id="vsError" role="alert"></p>
+      <div class="vs-foot">
+        <button type="button" class="btn-ghost" id="vsSecondaryBtn">Huỷ</button>
+        <button type="button" class="btn-primary" id="vsPrimaryBtn">Xong</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalOverlay">
     <form class="modal" id="entryForm">
       <div class="modal-head">
