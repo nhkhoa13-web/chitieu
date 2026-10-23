@@ -229,7 +229,7 @@
     display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; font-family:var(--sans);
     text-transform:uppercase;
   }
-  .menu-account-email{ font-size:11.5px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .menu-account-email{ font-size:11.5px; color:#5bdfe4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:bold; }
 
   /* auth gate */
   .auth-gate{
@@ -1525,3 +1525,163 @@ html[data-perf="lite"] .vs-wave i{ animation:none !important; height:14px; }
 .vs-error:empty{ display:none; }
 .vs-foot{ display:flex; gap:10px; }
 .vs-foot button{ flex:1; justify-content:center; }
+
+/* ============ Popup Xuất / Nhập Excel: 2 tab ============ */
+.xl-tabs{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:var(--bg); border:1px solid var(--border2); border-radius:13px; }
+.xl-tab{
+  display:flex; align-items:center; justify-content:center; gap:7px; padding:9px 8px; border-radius:10px;
+  border:1px solid transparent; background:transparent; color:var(--text-muted);
+  font-size:13px; font-weight:600; cursor:pointer; transition:background .18s ease, color .18s ease, border-color .18s ease;
+}
+.xl-tab svg{ width:15px; height:15px; flex-shrink:0; }
+.xl-tab:hover{ color:var(--text); }
+.xl-tab[aria-selected="true"]{
+  color:var(--text-hi); border-color:rgba(var(--chong-rgb),0.4);
+  background:linear-gradient(135deg, rgba(var(--chong-rgb),0.16), rgba(var(--vk-rgb),0.10));
+}
+.xl-tab:focus-visible{ outline:2px solid rgba(var(--chong-rgb),0.6); outline-offset:1px; }
+.xl-pane{ display:flex; flex-direction:column; gap:14px; }
+.xl-pane[hidden]{ display:none; }
+.xl-drop{
+  width:100%; display:flex; flex-direction:column; align-items:center; gap:6px; padding:24px 14px;
+  border:1.5px dashed var(--border2); border-radius:16px; background:var(--surface3); color:var(--text-mid);
+  cursor:pointer; text-align:center; transition:border-color .18s ease, background .18s ease, transform .12s ease;
+}
+.xl-drop:hover, .xl-drop:focus-visible{ border-color:rgba(var(--chong-rgb),0.65); background:rgba(var(--chong-rgb),0.06); outline:none; }
+.xl-drop:active{ transform:scale(0.99); }
+.xl-drop-icon{
+  width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-bottom:2px;
+  color:var(--chong); background:rgba(var(--chong-rgb),0.12); box-shadow:0 0 0 1px rgba(var(--chong-rgb),0.25);
+}
+.xl-drop-icon svg{ width:20px; height:20px; }
+.xl-drop-title{ font-size:14.5px; font-weight:600; color:var(--text-hi); }
+.xl-drop-sub{ font-size:12px; color:var(--text-faint); }
+.xl-steps{ margin:0; padding-left:20px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; line-height:1.5; color:var(--text-muted); }
+.xl-steps li::marker{ color:var(--text-faint); font-weight:600; }
+.xl-steps b{ color:var(--text); font-weight:600; }
+
+/* ============ Header: thông báo dài tự xuống dòng, không đẩy đồng hồ/nút xuống ============ */
+header.top{ flex-wrap:nowrap; align-items:stretch; }
+.header-left{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
+.header-right{ flex:0 0 auto; align-self:stretch; justify-content:space-between; }
+.sync-status-row{ display:flex; align-items:flex-start; gap:6px; margin-bottom:4px; min-width:0; width:100%; }
+.sync-status{
+  flex:1; min-width:0; min-height:14px; font-size:11px; line-height:1.4; color:var(--text-faint);
+  white-space:normal; overflow-wrap:anywhere; word-break:break-word;
+}
+
+/* =====================================================================
+   THẺ SỐ DƯ (Vợ đang nợ Chồng…) — bản thiết kế lại, lấp đầy khoảng trống
+   Bố cục: nhãn → SỐ TIỀN + sơ đồ dòng tiền Vợ→Chồng → 3 ô thành phần → nút chi tiết
+   ===================================================================== */
+.balance-card{
+  --dir:var(--text-muted); --dir-rgb:var(--zero-rgb);
+  position:relative; isolation:isolate;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.07), 0 14px 34px -22px rgba(var(--dir-rgb),0.55);
+}
+.balance-card.to-chong{ --dir:var(--chong-soft); --dir-rgb:var(--chong-rgb); }
+.balance-card.to-vk{ --dir:var(--vk-soft); --dir-rgb:var(--vk-rgb); }
+.balance-card.zero{ --dir:var(--zero); --dir-rgb:var(--zero-rgb); }
+/* quầng sáng theo chiều nợ + lưới chấm mờ ở góc phải (tĩnh, không tốn pin) */
+.balance-card::before{
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; border-radius:inherit;
+  background:
+    radial-gradient(70% 90% at 100% 0%, rgba(var(--dir-rgb),0.22), transparent 70%),
+    radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1.3px) 0 0 / 14px 14px;
+  -webkit-mask-image:linear-gradient(200deg, #000 0%, rgba(0,0,0,0.35) 45%, transparent 75%);
+          mask-image:linear-gradient(200deg, #000 0%, rgba(0,0,0,0.35) 45%, transparent 75%);
+  transition:background .4s ease;
+}
+html[data-theme="light"] .balance-card{ box-shadow:0 10px 26px -18px rgba(16,24,32,0.35); }
+html[data-theme="light"] .balance-card::before{
+  background:
+    radial-gradient(70% 90% at 100% 0%, rgba(var(--dir-rgb),0.16), transparent 70%),
+    radial-gradient(rgba(16,24,32,0.10) 1px, transparent 1.3px) 0 0 / 14px 14px;
+}
+
+.balance-spotlight{ padding:16px 16px 14px; }
+.balance-label-row{ margin-bottom:8px; gap:8px; }
+.balance-label-row svg{ width:26px; height:26px; padding:6px; border-radius:50%; background:rgba(var(--dir-rgb),0.16); }
+.balance-label{ font-size:13.5px; color:var(--text-mid); }
+
+/* hàng số tiền + sơ đồ dòng tiền */
+.balance-main{ display:flex; align-items:center; justify-content:space-between; gap:10px 14px; flex-wrap:wrap; }
+.balance-main .balance-number{ margin:0; min-width:0; }
+
+.balance-flow{ display:flex; align-items:flex-start; gap:6px; margin-left:auto; flex-shrink:0; }
+.bf-node{ display:flex; flex-direction:column; align-items:center; gap:4px; width:42px; opacity:.6; transition:opacity .4s ease; }
+.bf-node i{
+  font-style:normal; width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
+  font-size:13.5px; font-weight:700; border:1.5px solid currentColor;
+}
+.bf-node small{ font-size:8.5px; font-weight:700; letter-spacing:.06em; color:var(--text-dim); }
+.bf-vk{ color:var(--vk-soft); } .bf-vk i{ background:rgba(var(--vk-rgb),0.14); }
+.bf-ck{ color:var(--chong-soft); } .bf-ck i{ background:rgba(var(--chong-rgb),0.14); }
+/* bên NHẬN tiền sáng rõ + vòng hào quang */
+.balance-card.to-chong .bf-ck, .balance-card.to-vk .bf-vk{ opacity:1; }
+.balance-card.to-chong .bf-ck i{ box-shadow:0 0 0 4px rgba(var(--chong-rgb),0.15), 0 0 16px rgba(var(--chong-rgb),0.4); }
+.balance-card.to-vk .bf-vk i{ box-shadow:0 0 0 4px rgba(var(--vk-rgb),0.15), 0 0 16px rgba(var(--vk-rgb),0.4); }
+.balance-card.zero .bf-node{ opacity:.85; }
+/* đổi chiều: Chồng nợ Vợ thì Chồng ở bên trái, mũi tên chạy sang phải về phía Vợ */
+.balance-card.to-vk .balance-flow{ flex-direction:row-reverse; }
+
+.bf-track{ display:flex; align-items:center; justify-content:center; gap:3px; height:32px; width:34px; color:var(--dir); }
+.bf-c{
+  width:7px; height:7px; border-top:2px solid currentColor; border-right:2px solid currentColor;
+  transform:rotate(45deg); opacity:.25; animation:bfFlow 1.5s ease-in-out infinite;
+}
+.bf-c:nth-child(2){ animation-delay:.2s; } .bf-c:nth-child(3){ animation-delay:.4s; }
+.bf-eq{ display:none; font-style:normal; font-weight:700; font-size:16px; }
+.balance-card.zero .bf-c{ display:none; }
+.balance-card.zero .bf-eq{ display:block; }
+@keyframes bfFlow{ 0%,100%{ opacity:.2; } 40%{ opacity:1; } }
+
+/* 3 ô thành phần */
+.balance-chips{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
+.bchip{
+  --c:var(--text-dim);
+  position:relative; min-width:0; padding:8px 10px 8px 12px; border-radius:12px; overflow:hidden;
+  background:var(--tile); border:1px solid var(--border); display:flex; flex-direction:column; gap:3px;
+}
+/* vạch màu ôm theo góc bo bên trái — cùng kiểu với các dòng trong Sổ ghi chép */
+.bchip{ box-shadow:inset 2px 0 0 var(--c); }
+.bchip.to-chong{ --c:var(--chong-soft); } .bchip.to-vk{ --c:var(--vk-soft); }
+.bchip small{ font-size:10px; font-weight:600; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bchip b{ font-size:12.5px; font-weight:700; color:var(--c); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
+.bchip.zero b{ color:var(--text-dim); font-weight:600; }
+
+/* nút "Xem chi tiết": hàng đầy chiều ngang, rõ chữ, có mũi tên */
+.balance-hint{
+  display:flex; align-items:center; gap:7px; width:auto; margin-top:12px; padding:9px 12px; border-radius:12px;
+  font-size:12px; font-weight:600; letter-spacing:0; color:var(--text-mid); opacity:1;
+  background:var(--tile); border:1px solid var(--border);
+  transition:background .2s ease, color .2s ease, border-color .2s ease;
+}
+.balance-hint svg{ opacity:.9; }
+.balance-hint .balance-chev{ margin-left:auto; color:var(--dir); }
+.balance-spotlight:hover .balance-hint{ background:var(--tile-hover); color:var(--text-hi); border-color:rgba(var(--dir-rgb),0.35); }
+.balance-spotlight.open .balance-hint{ border-color:rgba(var(--dir-rgb),0.4); color:var(--text-hi); }
+.info-box.show{ border-top:1px dashed var(--border2); padding-top:14px; margin-top:-2px; }
+
+@media (max-width:480px){
+  .balance-spotlight{ padding:14px 14px 12px; }
+  .bf-node{ width:38px; } .bf-node i{ width:30px; height:30px; font-size:13px; }
+  .bf-track{ width:28px; height:30px; gap:2px; }
+  .balance-chips{ gap:6px; }
+  .bchip{ padding:7px 8px 7px 11px; } .bchip b{ font-size:11.5px; } .bchip small{ font-size:9.5px; }
+}
+/* tiết kiệm pin / giảm chuyển động: dừng mũi tên chạy, giữ trạng thái sáng đều */
+html[data-perf="lite"] .bf-c{ animation:none; opacity:.8; }
+html[data-perf="lite"] .balance-card::before{ transition:none; }
+@media (prefers-reduced-motion:reduce){ .bf-c{ animation:none; opacity:.8; } }
+
+/* Thu gọn: hiện đủ 3 ô thành phần. Mở "chi tiết cách tính": ẩn 3 ô (vì bảng chi tiết đã có đủ số liệu này) */
+.balance-spotlight.open .balance-chips{ display:none; }
+
+/* Mũi tên mở/đóng nằm ở góc phải trên của thẻ; đã bỏ hàng "Xem chi tiết cách tính" */
+.balance-label-row .balance-chev{ margin-left:auto; color:var(--dir); background:var(--tile); border:1px solid var(--border); transition:transform .25s var(--spring), background .2s ease; }
+.balance-spotlight:hover .balance-label-row .balance-chev{ background:rgba(var(--dir-rgb),0.18); }
+
+/* Mũi tên góc phải: chỉ hiện icon, không có vòng tròn */
+.balance-label-row .balance-chev{ background:none; border:none; padding:0; width:18px; height:18px; border-radius:0; }
+.balance-spotlight:hover .balance-label-row .balance-chev{ background:none; }

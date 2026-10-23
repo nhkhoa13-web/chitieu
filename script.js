@@ -1155,6 +1155,18 @@
       "(" + wrapCk(money(totals.ck_chung)) + " − " + wrapVk(money(totals.vk_chung)) + ") / 3";
     valueBadge(balance.third, "valThird");
 
+    // 3 ô tóm tắt ngay trên thẻ số dư (không cần mở "chi tiết cách tính" mới thấy)
+    function setChip(id, val){
+      const el = document.getElementById(id);
+      if(!el) return;
+      const z = Math.abs(val) < 0.01;
+      el.className = "bchip " + (z ? "zero" : (val > 0 ? "to-chong" : "to-vk"));
+      animateValue(el.querySelector("b"), z ? 0 : Math.abs(val));
+    }
+    setChip("chipHalf", balance.half);
+    setChip("chipDebt", balance.debt);
+    setChip("chipThird", balance.third);
+
     animateValue(document.getElementById("grandTotal"), grandTotal);
     animateValue(document.getElementById("entryCount"), entries.length, (v) => String(Math.round(v)));
   }
@@ -3097,7 +3109,29 @@
     chips.forEach(c => c.classList.toggle("active", !allActive));
     refreshToggleAllLabel(listEl, btnEl);
   }
+  // Tab Xuất / Nhập trong cùng popup
+  const xlTabs = Array.from(document.querySelectorAll(".xl-tab"));
+  const xlPanes = { export: document.getElementById("xlPaneExport"), import: document.getElementById("xlPaneImport") };
+  function setExcelTab(name){
+    xlTabs.forEach((t) => {
+      const on = t.dataset.tab === name;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+    });
+    Object.keys(xlPanes).forEach((k) => { xlPanes[k].hidden = k !== name; });
+  }
+  xlTabs.forEach((t, i) => {
+    t.addEventListener("click", () => setExcelTab(t.dataset.tab));
+    t.addEventListener("keydown", (e) => {
+      if(e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const nx = xlTabs[(i + (e.key === "ArrowRight" ? 1 : xlTabs.length - 1)) % xlTabs.length];
+      setExcelTab(nx.dataset.tab);
+      nx.focus();
+    });
+  });
   function openExportModal(){
+    setExcelTab("export");
     const monthKeys = Object.keys(monthsData).sort().reverse();
     exportMonthList.innerHTML = "";
     if(monthKeys.length === 0){
@@ -3268,12 +3302,13 @@
 
   // ---------- Nhập từ Excel (B) ----------
   const importFileInput = document.getElementById("importFileInput");
-  document.getElementById("importBtn").addEventListener("click", () => {
-    closeMenuPanel();
+  document.getElementById("importPickBtn").addEventListener("click", () => {
     // Mở hộp chọn file ngay (trình duyệt chỉ cho phép ngay trong thao tác bấm), đồng thời nạp thư viện Excel ngầm.
     loadXlsx().catch(() => {});
+    closeExportModal();
     importFileInput.click();
   });
+  document.getElementById("importCancelBtn").addEventListener("click", closeExportModal);
 
   // Nhận diện các dòng "TỔNG THEO DANH MỤC" / "CÂN BẰNG CHỒNG VỢ" mà chính app tự thêm vào cuối mỗi
   // sheet khi Xuất dữ liệu (xem buildMonthSheet) — để lỡ người dùng nhập lại đúng file vừa xuất ra thì
@@ -3470,11 +3505,27 @@
     pullMonth(currentMonthKey, { manual: true });
   });
 
+  // Bấm ⚡ -> hỏi xác nhận trước khi đổi (tránh bấm nhầm); chỉ đổi khi bấm nút xác nhận.
   document.getElementById("autoPullToggle").addEventListener("click", () => {
     const next = !getAutoPull();
-    setAutoPull(next);
-    flashSyncStatus(next ? "Đã BẬT tự động tải bản mới khi mở/quay lại app" : "Đã TẮT tự động tải bản mới", 3000);
-    if(next && SHEET_SYNC_URL) pullMonth(currentMonthKey);
+    const apply = () => {
+      setAutoPull(next);
+      flashSyncStatus(next ? "Đã BẬT tự động tải bản mới khi mở/quay lại app" : "Đã TẮT tự động tải bản mới", 3000);
+      if(next && SHEET_SYNC_URL) pullMonth(currentMonthKey);
+    };
+    if(next){
+      openConfirm(
+        "Bật tự động tải bản mới?",
+        "App sẽ tự tải dữ liệu mới từ Google Sheet khi bạn mở hoặc quay lại app (cách lần tải trước từ 2 phút) và khi chuyển tháng, để thấy khoản chi của người kia mà không cần bấm Đồng bộ.",
+        "Bật", false, apply
+      );
+    }else{
+      openConfirm(
+        "Tắt tự động tải bản mới?",
+        "Khi tắt, bạn sẽ không thấy khoản chi mới của người kia cho đến khi tự bấm \"Đồng bộ\" trong menu ⋮. Thay đổi của bạn vẫn được gửi lên Sheet bình thường.",
+        "Tắt", false, apply
+      );
+    }
   });
 
   document.getElementById("themeToggle").addEventListener("click", () => {
@@ -4024,6 +4075,8 @@
     const isOpen = document.getElementById("infoBox").classList.toggle("show");
     btn.classList.toggle("open", isOpen);
     btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    const hintTxt = document.getElementById("balanceHintText");
+    if(hintTxt) hintTxt.textContent = isOpen ? "Thu gọn chi tiết" : "Xem chi tiết cách tính";
   });
   document.getElementById("statsToggle").addEventListener("click", () => {
     document.getElementById("statsBody").classList.toggle("show");

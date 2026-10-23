@@ -126,10 +126,10 @@
   </div>
   <div class="wrap">
     <header class="top">
-      <div>
+      <div class="header-left">
         <div class="eyebrow"><svg class="brand-mark" viewBox="50 14 100 150" aria-hidden="true"><defs><linearGradient id="bmC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6CF6FB"/><stop offset="1" stop-color="#29E7F0"/></linearGradient><linearGradient id="bmP" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FF6AB0"/><stop offset="1" stop-color="#F7318F"/></linearGradient></defs><rect x="52" y="62" width="40" height="100" rx="11" fill="url(#bmC)"/><rect x="108" y="92" width="40" height="70" rx="11" fill="url(#bmP)"/><circle cx="100" cy="34" r="17" fill="#FFC93C"/><circle cx="100" cy="34" r="9.5" fill="none" stroke="#B0761E" stroke-width="2.6"/></svg>Sổ chi tiêu</div>
-        <div class="sync-status-row" style="display:flex; align-items:center; gap:6px; margin-bottom:4px; min-width:0;">
-          <div class="sync-status" id="syncStatus" style="font-size:11px;color:var(--text-faint);min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;"></div>
+        <div class="sync-status-row">
+          <div class="sync-status" id="syncStatus"></div>
         </div>
         <div class="month-switcher">
           <button class="month-trigger" id="monthTrigger" type="button">
@@ -169,12 +169,8 @@
             </div>
             <div class="menu-divider"></div>
             <button type="button" class="menu-item" id="exportBtn">
-              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg></span>
-              Xuất dữ liệu (.xlsx)
-            </button>
-            <button type="button" class="menu-item" id="importBtn">
-              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 19h16"/></svg></span>
-              Nhập từ Excel
+              <span class="menu-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 20V7"/><path d="m3 11 4-4 4 4"/><path d="M17 4v13"/><path d="m13 13 4 4 4-4"/></svg></span>
+              Xuất / Nhập Excel
             </button>
             <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none" />
             <div class="menu-divider"></div>
@@ -275,16 +271,24 @@
 
       <div class="hero-right">
         <div class="balance-card" id="balanceCard">
-          <button type="button" class="balance-spotlight" id="balanceSpotlight" aria-expanded="false">
+          <button type="button" class="balance-spotlight" id="balanceSpotlight" aria-expanded="false" aria-label="Xem chi tiết cách tính">
             <div class="balance-label-row">
               <svg id="ownerIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="color:var(--text-muted)"><path d="M12 2v20M2 12h20"/></svg>
               <span class="balance-label" id="ownerLabel">Đã cân bằng</span>
-              <svg class="chev balance-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              <svg class="chev balance-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
             </div>
-            <div class="balance-number" id="balanceNumber">0 ₫</div>
-            <div class="balance-hint">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-              <span>Xem chi tiết cách tính</span>
+            <div class="balance-main">
+              <div class="balance-number" id="balanceNumber">0 ₫</div>
+              <div class="balance-flow" aria-hidden="true">
+                <span class="bf-node bf-vk"><i>V</i><small>VỢ</small></span>
+                <span class="bf-track"><b class="bf-c"></b><b class="bf-c"></b><b class="bf-c"></b><em class="bf-eq">=</em></span>
+                <span class="bf-node bf-ck"><i>C</i><small>CHỒNG</small></span>
+              </div>
+            </div>
+            <div class="balance-chips">
+              <span class="bchip" id="chipHalf"><small>Trả hộ · chia 2</small><b>0 ₫</b></span>
+              <span class="bchip" id="chipDebt"><small>Ghi nợ</small><b>0 ₫</b></span>
+              <span class="bchip" id="chipThird"><small>Chung · chia 3</small><b>0 ₫</b></span>
             </div>
           </button>
           <div class="info-box" id="infoBox">
@@ -689,41 +693,70 @@
   <div class="modal-overlay" id="exportOverlay">
     <div class="modal" style="max-width:420px">
       <div class="modal-head">
-        <h3 class="modal-title">Xuất dữ liệu (.xlsx)</h3>
+        <h3 class="modal-title">Xuất / Nhập Excel</h3>
         <button type="button" class="icon-btn" id="exportModalClose" aria-label="Đóng">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
 
-      <div class="export-filter-group">
-        <div class="export-filter-label-row">
-          <span class="export-filter-label">Chọn tháng</span>
-          <button type="button" class="export-filter-toggle-all" id="exportMonthToggleAll">Bỏ chọn tất cả</button>
-        </div>
-        <div class="export-chip-list" id="exportMonthList"></div>
+      <div class="xl-tabs" role="tablist" aria-label="Xuất hoặc nhập Excel">
+        <button type="button" class="xl-tab" id="xlTabExport" role="tab" aria-selected="true" aria-controls="xlPaneExport" data-tab="export">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>
+          Xuất ra Excel
+        </button>
+        <button type="button" class="xl-tab" id="xlTabImport" role="tab" aria-selected="false" aria-controls="xlPaneImport" data-tab="import" tabindex="-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 19h16"/></svg>
+          Nhập từ Excel
+        </button>
       </div>
 
-      <div class="export-filter-group">
-        <div class="export-filter-label-row">
-          <span class="export-filter-label">Danh mục</span>
-          <button type="button" class="export-filter-toggle-all" id="exportCatToggleAll">Bỏ chọn tất cả</button>
+      <div class="xl-pane" id="xlPaneExport" role="tabpanel" aria-labelledby="xlTabExport">
+        <div class="export-filter-group">
+          <div class="export-filter-label-row">
+            <span class="export-filter-label">Chọn tháng</span>
+            <button type="button" class="export-filter-toggle-all" id="exportMonthToggleAll">Bỏ chọn tất cả</button>
+          </div>
+          <div class="export-chip-list" id="exportMonthList"></div>
         </div>
-        <div class="export-chip-list" id="exportCatList"></div>
+
+        <div class="export-filter-group">
+          <div class="export-filter-label-row">
+            <span class="export-filter-label">Danh mục</span>
+            <button type="button" class="export-filter-toggle-all" id="exportCatToggleAll">Bỏ chọn tất cả</button>
+          </div>
+          <div class="export-chip-list" id="exportCatList"></div>
+        </div>
+
+        <div class="export-filter-group">
+          <span class="export-filter-label">Khoảng ngày trong tháng (bỏ trống = lấy hết)</span>
+          <div class="field-row">
+            <label class="field field-day"><span>Từ ngày</span><input type="number" id="exportDayFrom" min="1" max="31" placeholder="1" /></label>
+            <label class="field field-day"><span>Đến ngày</span><input type="number" id="exportDayTo" min="1" max="31" placeholder="31" /></label>
+          </div>
+        </div>
+
+        <p class="export-note">File xuất ra sẽ có thêm dòng "Tổng theo danh mục" và "Cân bằng Chồng/Vợ" ở cuối mỗi sheet tháng, tính bằng công thức Excel giống hệt cách app đang tính — mở file lên bạn có thể bấm vào từng ô để xem lại công thức.</p>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="exportCancelBtn">Huỷ</button>
+          <button type="button" class="btn-primary" id="exportConfirmBtn">Xuất file</button>
+        </div>
       </div>
 
-      <div class="export-filter-group">
-        <span class="export-filter-label">Khoảng ngày trong tháng (bỏ trống = lấy hết)</span>
-        <div class="field-row">
-          <label class="field field-day"><span>Từ ngày</span><input type="number" id="exportDayFrom" min="1" max="31" placeholder="1" /></label>
-          <label class="field field-day"><span>Đến ngày</span><input type="number" id="exportDayTo" min="1" max="31" placeholder="31" /></label>
+      <div class="xl-pane" id="xlPaneImport" role="tabpanel" aria-labelledby="xlTabImport" hidden>
+        <button type="button" class="xl-drop" id="importPickBtn">
+          <span class="xl-drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 19h16"/></svg></span>
+          <span class="xl-drop-title">Chọn file Excel để nhập</span>
+          <span class="xl-drop-sub">Hỗ trợ .xlsx và .xls</span>
+        </button>
+        <ol class="xl-steps">
+          <li>Chọn file, tốt nhất là file do chính app này xuất ra.</li>
+          <li>Xem trước và tích những tháng muốn nhập.</li>
+          <li>Chọn <b>Gộp thêm</b> (giữ dữ liệu cũ) hoặc <b>Ghi đè hoàn toàn</b> (thay thế tháng đó).</li>
+        </ol>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="importCancelBtn">Đóng</button>
         </div>
-      </div>
-
-      <p class="export-note">File xuất ra sẽ có thêm dòng "Tổng theo danh mục" và "Cân bằng Chồng/Vợ" ở cuối mỗi sheet tháng, tính bằng công thức Excel giống hệt cách app đang tính — mở file lên bạn có thể bấm vào từng ô để xem lại công thức.</p>
-
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" id="exportCancelBtn">Huỷ</button>
-        <button type="button" class="btn-primary" id="exportConfirmBtn">Xuất file</button>
       </div>
     </div>
   </div>
