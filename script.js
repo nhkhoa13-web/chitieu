@@ -1680,7 +1680,18 @@
     document.getElementById("dayTriggerLabel").textContent = "Ngày " + day;
     buildDayCalendar(currentMonthKey, day);
   }
+  let modalOpenedAt = 0; // mốc mở popup: chặn cú "click ma" ngay sau khi nhấn giữ (ngón tay nhấc lên đúng chỗ lớp phủ)
+  let dupSourceId = null; // khác null khi popup đang mở ở chế độ "Nhân bản khoản chi" (id khoản gốc)
+  const dupFromEl = document.getElementById("dupFrom");
+  const dupFromTxt = document.getElementById("dupFromTxt");
+  function resetDupModalState(){
+    dupSourceId = null;
+    if(dupFromEl) dupFromEl.hidden = true;
+    entryForm.classList.remove("dup-open");
+  }
   function openModal(mode, entry, customTitle, customSubmitLabel){
+    resetDupModalState();
+    modalOpenedAt = Date.now();
     editingId = entry ? entry.id : null;
     modalTitle.textContent = customTitle || (mode === "edit" ? "Sửa khoản chi" : "Thêm khoản chi");
     submitBtn.setAttribute("aria-label", customSubmitLabel || (mode === "edit" ? "Lưu" : "Thêm"));
@@ -1727,6 +1738,7 @@
     modalOverlay.classList.remove("show");
     editingId = null;
     formSnapshot = null;
+    resetDupModalState();
     mergeSecondaryIds = []; // đóng popup (kể cả huỷ) -> luôn bỏ cờ "đang chờ gộp", tránh gộp nhầm ở lần Sửa kế tiếp
     entryForm.reset();
     closeDayPanel();
@@ -1738,7 +1750,7 @@
   document.getElementById("fabAddBtn").addEventListener("click", () => openModal("add", null));
   document.getElementById("cancelModal").addEventListener("click", attemptCloseModal);
   cancelModalBottom.addEventListener("click", attemptCloseModal);
-  modalOverlay.addEventListener("click", (e) => { if(e.target === modalOverlay) attemptCloseModal(); });
+  modalOverlay.addEventListener("click", (e) => { if(e.target === modalOverlay && Date.now() - modalOpenedAt > 450) attemptCloseModal(); });
 
   // ---------- Confirm dialog helper ----------
   const confirmOverlay = document.getElementById("confirmOverlay");
@@ -1957,11 +1969,13 @@
         );
       }else{
         const newEntry = { id: genEntryId(), day, name, amount, amountFormula, category, note, updatedAt: Date.now() };
+        const wasDuplicate = !!dupSourceId; // phải đọc TRƯỚC closeModal() vì closeModal() xoá cờ này
         entries.push(newEntry);
         commit();
         closeModal();
         render();
         queueSync("addEntry", newEntry);
+        if(wasDuplicate) playDuplicateLanded(newEntry.id);
       }
     }catch(err){ showErrorBanner("submit: " + err.message); }
     finally{
@@ -2495,6 +2509,63 @@
     const todayDay = Math.max(1, Math.min(daysInMonthKey(currentMonthKey), new Date().getDate()));
     const draft = Object.assign({}, entry, { id: null, day: todayDay });
     openModal("add", draft, "Nhân bản khoản chi", "Nhân bản");
+    // Đánh dấu popup đang ở chế độ nhân bản (đặt SAU openModal vì openModal luôn reset cờ này)
+    dupSourceId = id;
+    const cat = catById[entry.category] || catById.ca_nhan;
+    if(dupFromEl && dupFromTxt){
+      dupFromEl.style.setProperty("--dup-c", cat.color);
+      dupFromTxt.innerHTML = "Bản sao của <b>" + escapeHtml(entry.name) + "</b> · " + money(entry.amount) + " · Ngày " + entry.day;
+      dupFromEl.hidden = false;
+    }
+    entryForm.classList.add("dup-open");
+  }
+
+  // ---------- Hiệu ứng nhân bản ----------
+  const dupFxOff = () => prefersReducedMotion() || document.documentElement.getAttribute("data-perf") === "lite";
+
+  // Đủ thời gian giữ: hàng nảy nhẹ, một BẢN SAO tách khỏi hàng, bay lên và mờ dần dưới lớp mờ của popup.
+  function playDuplicateCommit(wrap){
+    if(!wrap) return;
+    wrap.classList.add("lp-commit");
+    setTimeout(() => wrap.classList.remove("lp-commit"), 520);
+    if(dupFxOff() || !wrap.isConnected) return;
+    try{
+      const r = wrap.getBoundingClientRect();
+      if(r.width < 20 || r.height < 10) return;
+      const g = wrap.cloneNode(true);
+      g.className = "t-row-wrap dup-ghost";
+      g.removeAttribute("data-id");
+      g.setAttribute("aria-hidden", "true");
+      g.querySelectorAll("[data-id]").forEach(n => n.removeAttribute("data-id"));
+      g.querySelectorAll("button").forEach(n => { n.tabIndex = -1; });
+      g.style.left = r.left + "px"; g.style.top = r.top + "px";
+      g.style.width = r.width + "px"; g.style.height = r.height + "px";
+      const done = () => { if(g.parentNode) g.parentNode.removeChild(g); };
+      g.addEventListener("animationend", (ev) => { if(ev.target === g) done(); });
+      document.body.appendChild(g);
+      setTimeout(done, 900); // phòng trường hợp animationend không bắn (tab ẩn...)
+    }catch(err){ /* hiệu ứng lỗi thì thôi, không ảnh hưởng việc nhân bản */ }
+  }
+
+  // Lưu xong: tự cuộn tới khoản mới nếu nó nằm ngoài màn hình (khoản mới nằm ở nhóm ngày HÔM NAY, thường xa khoản gốc),
+  // rồi quét sáng bằng màu danh mục để người dùng thấy ngay nó vừa "đáp" xuống đâu.
+  function playDuplicateLanded(id){
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const bodyEl = document.getElementById("ledgerBody");
+      if(!bodyEl) return;
+      let wrap = null;
+      bodyEl.querySelectorAll(".t-row-wrap").forEach(w => { if(w.getAttribute("data-id") === id) wrap = w; });
+      if(!wrap) return; // đang lọc/tìm kiếm nên khoản mới không hiện -> thôi
+      const r = wrap.getBoundingClientRect();
+      if(r.top < 80 || r.bottom > window.innerHeight - 96){
+        try{ wrap.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" }); }
+        catch(err){ wrap.scrollIntoView(); }
+      }
+      wrap.classList.remove("row-dup");
+      void wrap.offsetWidth; // khởi động lại animation nếu lỡ còn class cũ
+      wrap.classList.add("row-dup");
+      setTimeout(() => wrap.classList.remove("row-dup"), 1500);
+    }));
   }
 
   // ---------- Nghe giọng nói + bảng "Đang nghe" / "Xem lại" ----------
@@ -2920,26 +2991,45 @@
     // nhân bản. Bất kỳ chuyển động thật nào (kéo vuốt, cuộn trang) đều huỷ ngay, để
     // không đụng chạm với thao tác vuốt Sửa/Xoá đã có.
     const LEDGER_LONGPRESS_MS = 550;
-    let longPressTimer = null, longPressRow = null;
+    // Hiệu ứng tia quét chỉ bắt đầu sau 120ms: chạm nhanh / bắt đầu cuộn trang sẽ không bị nháy màu oan.
+    const LEDGER_LP_VISUAL_DELAY = 120;
+    document.documentElement.style.setProperty("--lp-ms", (LEDGER_LONGPRESS_MS - LEDGER_LP_VISUAL_DELAY) + "ms");
+    let longPressTimer = null, longPressVisualTimer = null, longPressRow = null, longPressWrap = null;
+    let lastLongPressCommitAt = 0;
 
     function armLongPress(wrap, row){
       disarmLongPress();
       longPressRow = row;
-      if(row) row.classList.add("long-press-armed");
+      longPressVisualTimer = setTimeout(() => {
+        longPressVisualTimer = null;
+        if(wrap && longPressTimer){ wrap.classList.add("lp-armed"); longPressWrap = wrap; }
+      }, LEDGER_LP_VISUAL_DELAY);
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
-        if(row) row.classList.remove("long-press-armed");
+        const w = longPressWrap || wrap;
+        if(w) w.classList.remove("lp-armed");
+        longPressWrap = null; longPressRow = null;
+        lastLongPressCommitAt = Date.now();
         if(navigator.vibrate) navigator.vibrate(12);
         // Đã "chốt" thao tác nhấn giữ -> bỏ theo dõi kéo/vuốt của cử chỉ này luôn,
         // tránh việc tay còn đang chạm bàn phím cảm ứng làm hàng bị kéo lệch dưới popup.
         activeRow = null; activeWrap = null; axisLocked = null;
+        playDuplicateCommit(wrap);
         openDuplicateConfirm(wrap.getAttribute("data-id"));
       }, LEDGER_LONGPRESS_MS);
     }
     function disarmLongPress(){
       if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
-      if(longPressRow){ longPressRow.classList.remove("long-press-armed"); longPressRow = null; }
+      if(longPressVisualTimer){ clearTimeout(longPressVisualTimer); longPressVisualTimer = null; }
+      if(longPressWrap){ longPressWrap.classList.remove("lp-armed"); longPressWrap = null; }
+      longPressRow = null;
     }
+    // Android/Chrome có thể bật menu ngữ cảnh (chọn chữ/sao chép) ngay giữa lúc giữ tay -> chặn để không phá hiệu ứng.
+    body.addEventListener("contextmenu", (e) => {
+      if(longPressTimer || Date.now() - lastLongPressCommitAt < 1500){
+        if(e.target.closest && e.target.closest(".t-row-wrap")) e.preventDefault();
+      }
+    });
 
     function setIndicators(wrap, x){
       const editInd = wrap.querySelector(".t-swipe-edit-indicator");

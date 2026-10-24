@@ -644,28 +644,8 @@
   .t-swipe-indicator.armed{ opacity:1; transform:scale(1); }
   .t-swipe-edit-indicator{ right:0; background:var(--chong); border-top-right-radius:11px; border-bottom-right-radius:11px; }
   .t-swipe-delete-indicator{ left:0; background:#e0455a; border-top-left-radius:11px; border-bottom-left-radius:11px; }
-  /* Nhấn giữ 1 khoản chi = hiện popup "Nhân bản khoản chi" — hiệu ứng sáng dần trong
-     lúc giữ tay để người dùng biết đang được ghi nhận, không phải app bị đứng. */
+  /* Nhấn giữ 1 khoản chi = nhân bản. Hiệu ứng nằm ở cuối file, mục "Nhân bản khoản chi". */
   .t-row-wrap .t-row{ -webkit-touch-callout:none; }
-  .t-row-wrap .t-row.long-press-armed{ animation:tRowLongPress .55s ease forwards; position:relative; overflow:hidden; }
-  @keyframes tRowLongPress{
-    0%{ filter:brightness(1); box-shadow:none; }
-    100%{ filter:brightness(1.16); box-shadow:inset 0 0 0 1.5px rgba(var(--gold-rgb),0.55); }
-  }
-  /* Hiệu ứng tia sáng quét chéo (shimmer) chạy 1 lượt qua dòng trong lúc giữ tay, đúng bằng thời
-     gian giữ (550ms) — báo hiệu "đang được ghi nhận" trước khi popup nhân bản mở ra. */
-  .t-row-wrap .t-row.long-press-armed::after{
-    content:""; position:absolute; top:0; left:-60%; width:45%; height:100%;
-    background:linear-gradient(115deg,
-      rgba(var(--gold-rgb),0) 0%, rgba(var(--gold-rgb),0.22) 42%,
-      rgba(var(--gold-rgb),0.38) 50%, rgba(var(--gold-rgb),0.22) 58%, rgba(var(--gold-rgb),0) 100%);
-    transform:skewX(-20deg); pointer-events:none;
-    animation: tRowShimmerSweep 0.55s linear forwards;
-  }
-  @keyframes tRowShimmerSweep{
-    0%{ left:-60%; }
-    100%{ left:130%; }
-  }
   @media (min-width:700px) and (pointer:fine){
     .t-actions{ display:flex; }
     .t-swipe-edit-indicator, .t-swipe-delete-indicator{ display:none; }
@@ -1685,3 +1665,123 @@ html[data-perf="lite"] .balance-card::before{ transition:none; }
 /* Mũi tên góc phải: chỉ hiện icon, không có vòng tròn */
 .balance-label-row .balance-chev{ background:none; border:none; padding:0; width:18px; height:18px; border-radius:0; }
 .balance-spotlight:hover .balance-label-row .balance-chev{ background:none; }
+
+
+/* ============ Nhân bản khoản chi (nhấn giữ) ============
+   Chỉ dùng transform + opacity (chạy trên GPU, không gây layout/repaint như bản cũ dùng left/filter/box-shadow).
+   Luồng: [giữ tay] tia quét màu danh mục + nhãn "Nhân bản" -> [đủ giờ] hàng nảy nhẹ + bản sao bay lên
+          -> [popup] ô thông tin điền lần lượt -> [lưu] hàng mới sáng lên đúng màu danh mục, tự cuộn tới nếu nằm ngoài màn hình. */
+:root{ --lp-ms:550ms; }
+@media (pointer:coarse){
+  .t-row-wrap .t-row{ -webkit-user-select:none; user-select:none; } /* tránh bôi đen chữ lúc giữ tay */
+}
+
+/* 1) Giữ tay: hàng lún nhẹ, tia quét màu danh mục chạy từ trái sang phải trong đúng thời gian giữ */
+.t-row-wrap{ --dup-c:var(--c, var(--chong)); }
+.t-row-wrap::before, .t-row-wrap::after{ pointer-events:none; opacity:0; }
+.t-row-wrap::before{
+  content:""; position:absolute; inset:0; z-index:2; border-radius:inherit;
+  background:linear-gradient(90deg,
+    color-mix(in srgb, var(--dup-c) 6%, transparent) 0%,
+    color-mix(in srgb, var(--dup-c) 24%, transparent) calc(100% - 26px),
+    color-mix(in srgb, var(--dup-c) 70%, transparent) calc(100% - 3px),
+    var(--dup-c) 100%);
+  transform:translate3d(-100%,0,0);
+  transition:transform .22s ease-out, opacity .22s ease-out;
+  will-change:transform, opacity;
+}
+.t-row-wrap::after{
+  content:"Nhân bản"; position:absolute; z-index:3; left:50%; top:50%;
+  padding:5px 13px; border-radius:999px; font-size:11.5px; font-weight:700; letter-spacing:.02em; white-space:nowrap;
+  color:var(--text-hi); background:color-mix(in srgb, var(--dup-c) 22%, var(--surface2));
+  border:1px solid color-mix(in srgb, var(--dup-c) 60%, transparent);
+  transform:translate3d(-50%,-38%,0) scale(.88);
+  transition:transform .18s ease-out, opacity .18s ease-out;
+}
+.t-row-wrap.lp-armed{
+  transform:scale(.982);
+  transition:transform var(--lp-ms) cubic-bezier(.3,0,.2,1);
+}
+.t-row-wrap.lp-armed::before{
+  opacity:1; transform:translate3d(0,0,0);
+  transition:transform var(--lp-ms) cubic-bezier(.45,.05,.35,1), opacity .12s ease-out;
+}
+/* nhãn chỉ hiện ở nửa sau của lúc giữ, để người dùng biết thao tác này sẽ làm gì */
+.t-row-wrap.lp-armed::after{
+  opacity:1; transform:translate3d(-50%,-50%,0) scale(1);
+  transition:transform .26s var(--spring) calc(var(--lp-ms) * .42), opacity .2s ease-out calc(var(--lp-ms) * .42);
+}
+
+/* 2) Đủ thời gian giữ: hàng nảy lên, tia sáng tắt dần */
+.t-row-wrap.lp-commit{ animation:dupPop .46s var(--spring); }
+.t-row-wrap.lp-commit::before{
+  opacity:0; transform:translate3d(0,0,0);
+  transition:opacity .4s ease-out;
+}
+@keyframes dupPop{ 0%{ transform:scale(.982); } 38%{ transform:scale(1.028); } 100%{ transform:scale(1); } }
+
+/* 3) Bản sao tách khỏi hàng, bay lên và mờ dần trong lúc popup trượt vào (nằm DƯỚI lớp mờ của popup nên có chiều sâu) */
+.dup-ghost{
+  position:fixed; z-index:49; margin:0; pointer-events:none; contain:layout paint;
+  animation:dupGhost .62s var(--ease-out) forwards; will-change:transform, opacity;
+}
+.dup-ghost::before, .dup-ghost::after{ content:none !important; }
+.dup-ghost .t-swipe-indicator{ display:none; }
+.dup-ghost .t-row{ box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--dup-c) 75%, transparent) !important; }
+@keyframes dupGhost{
+  0%{ transform:translate3d(0,0,0) scale(1); opacity:1; }
+  30%{ transform:translate3d(0,-9px,0) scale(1.035) rotate(-.7deg); opacity:1; }
+  100%{ transform:translate3d(0,-30px,0) scale(1.02) rotate(-1.2deg); opacity:0; }
+}
+
+/* 4) Popup: dòng "Bản sao của ..." + các ô điền lần lượt như đang chép dữ liệu sang */
+.dup-from{
+  display:flex; align-items:center; gap:9px; min-width:0; padding:9px 12px; border-radius:13px;
+  font-size:12.5px; color:var(--text-mid);
+  background:color-mix(in srgb, var(--dup-c, var(--chong)) 11%, transparent);
+  border:1px solid color-mix(in srgb, var(--dup-c, var(--chong)) 30%, transparent);
+}
+.dup-from[hidden]{ display:none; }
+.dup-from-ic{ flex-shrink:0; display:grid; place-items:center; width:24px; height:24px; border-radius:8px; color:var(--dup-c, var(--chong)); background:color-mix(in srgb, var(--dup-c, var(--chong)) 18%, transparent); }
+.dup-from-txt{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dup-from-txt b{ color:var(--text-hi); font-weight:600; }
+#entryForm.dup-open .dup-from{ animation:dupFieldIn .45s var(--ease-out) .06s backwards; }
+#entryForm.dup-open .dup-from + .field-row{ animation:dupFieldIn .5s var(--ease-out) .14s backwards; }
+#entryForm.dup-open .dup-from + .field-row + .field-row{ animation:dupFieldIn .5s var(--ease-out) .21s backwards; }
+#entryForm.dup-open > label.field{ animation:dupFieldIn .5s var(--ease-out) .28s backwards; }
+#entryForm.dup-open > .modal-actions{ animation:dupFieldIn .5s var(--ease-out) .35s backwards; }
+@keyframes dupFieldIn{ from{ opacity:0; transform:translate3d(0,9px,0); } }
+
+/* 5) Lưu xong: hàng mới được quét sáng bằng màu danh mục (ngay trong lúc app cuộn tới nó) */
+.t-row-wrap.row-dup{ animation:dupLand .62s var(--spring) backwards; }
+.t-row-wrap.row-dup::before{
+  opacity:0; transform:translate3d(-100%,0,0);
+  animation:dupSweep 1.25s cubic-bezier(.3,.1,.2,1) .05s both;
+}
+@keyframes dupLand{ from{ opacity:0; transform:translate3d(0,-14px,0) scale(.95); } }
+@keyframes dupSweep{
+  0%{ opacity:1; transform:translate3d(-100%,0,0); }
+  45%{ opacity:1; transform:translate3d(0,0,0); }
+  100%{ opacity:0; transform:translate3d(0,0,0); }
+}
+
+/* Tiết kiệm pin: giữ tia quét (rất nhẹ), bỏ bản sao bay / nảy / vào lần lượt; hàng mới chỉ có viền sáng ngắn */
+html[data-perf="lite"] .dup-ghost{ display:none; }
+html[data-perf="lite"] .t-row-wrap.lp-commit{ animation:none; }
+html[data-perf="lite"] #entryForm.dup-open .dup-from,
+html[data-perf="lite"] #entryForm.dup-open .field-row,
+html[data-perf="lite"] #entryForm.dup-open > label.field,
+html[data-perf="lite"] #entryForm.dup-open > .modal-actions{ animation:none !important; }
+html[data-perf="lite"] .t-row-wrap.row-dup{ animation:none; }
+html[data-perf="lite"] .t-row-wrap.row-dup::before{ animation:none; opacity:0; }
+html[data-perf="lite"] .t-row-wrap.row-dup .t-row{ box-shadow:inset 2px 0 0 var(--c, var(--chong)), inset 0 0 0 1.5px var(--dup-c); }
+@media (prefers-reduced-motion:reduce){
+  .t-row-wrap.lp-armed{ transform:none; transition:none; }
+  .t-row-wrap.lp-armed::before{ transform:translate3d(0,0,0); transition:none; opacity:.7; }
+  .t-row-wrap.lp-armed::after{ transform:translate3d(-50%,-50%,0); transition:none; }
+  .t-row-wrap.lp-commit, .t-row-wrap.row-dup, .t-row-wrap.row-dup::before{ animation:none !important; }
+  .dup-ghost{ display:none; }
+  #entryForm.dup-open .dup-from, #entryForm.dup-open .field-row,
+  #entryForm.dup-open > label.field, #entryForm.dup-open > .modal-actions{ animation:none !important; }
+  .t-row-wrap.row-dup .t-row{ box-shadow:inset 2px 0 0 var(--c, var(--chong)), inset 0 0 0 1.5px var(--dup-c); }
+}
