@@ -344,27 +344,28 @@
     }
   }
   const prefersReducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  function animateValue(el, toValue, formatter){
+  function animateValue(el, toValue, formatter, setter){
     if(!el) return;
     formatter = formatter || money;
+    setter = setter || ((node, text) => { node.textContent = text; });
     const to = Number(toValue) || 0;
     if(prefersReducedMotion()){
       el.dataset.animVal = to;
-      el.textContent = formatter(to);
+      setter(el, formatter(to));
       return;
     }
     const from = Number(el.dataset.animVal || 0);
     el.dataset.animVal = to;
-    if(Math.abs(to - from) < 0.001){ el.textContent = formatter(to); return; }
+    if(Math.abs(to - from) < 0.001){ setter(el, formatter(to)); return; }
     const duration = 550;
     const start = performance.now();
     if(el._animRaf) cancelAnimationFrame(el._animRaf);
     function tick(now){
       const t = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = formatter(from + (to - from) * eased);
+      setter(el, formatter(from + (to - from) * eased));
       if(t < 1){ el._animRaf = requestAnimationFrame(tick); }
-      else { el.textContent = formatter(to); el._animRaf = null; }
+      else { setter(el, formatter(to)); el._animRaf = null; }
     }
     el._animRaf = requestAnimationFrame(tick);
   }
@@ -1084,6 +1085,61 @@
     renderLedger();
   }
 
+  // Số tiền chính: phần số to, đơn vị ₫ nhỏ và mờ hơn (không còn trông như chữ "đ" bị gạch chân dính vào số).
+  function setHeroAmount(el, text){
+    let intEl = el.firstElementChild, unitEl = intEl && intEl.nextElementSibling;
+    if(!intEl || !unitEl || !intEl.classList.contains("bn-int")){
+      el.textContent = "";
+      intEl = document.createElement("span"); intEl.className = "bn-int";
+      unitEl = document.createElement("span"); unitEl.className = "bn-unit";
+      el.appendChild(intEl); el.appendChild(unitEl);
+    }
+    const i = text.lastIndexOf(" ");
+    intEl.textContent = i > 0 ? text.slice(0, i) : text;
+    unitEl.textContent = i > 0 ? text.slice(i + 1) : "";
+    el.setAttribute("aria-label", text);
+  }
+  // Tự chỉnh cỡ chữ để số lớn nhất có thể mà vẫn nằm gọn cạnh sơ đồ V → C (số 7-8 chữ số vẫn không bị tràn/xuống dòng).
+  let fitHeroRaf = 0, fitHeroLastW = 0;
+  function fitHeroAmount(){
+    const num = document.getElementById("balanceNumber");
+    const row = num && num.parentElement;
+    const flow = row && row.querySelector(".balance-flow");
+    if(!num || !row || !flow || !num.dataset.final) return;
+    num.style.fontSize = "";                                  // về cỡ tối đa theo CSS
+    const maxPx = parseFloat(getComputedStyle(num).fontSize) || 36;
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 12;
+    const avail = row.clientWidth - flow.offsetWidth - gap - 4;
+    if(avail <= 40) return;
+    const probe = num.cloneNode(false);
+    probe.className = "balance-number";
+    probe.removeAttribute("id");
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;flex:none;width:auto;font-size:100px;white-space:nowrap;";
+    setHeroAmount(probe, num.dataset.final);
+    row.appendChild(probe);
+    const w100 = probe.getBoundingClientRect().width;
+    row.removeChild(probe);
+    if(!w100) return;
+    const fit = Math.floor((avail / w100) * 100 * 2) / 2;
+    num.style.fontSize = Math.max(22, Math.min(maxPx, fit)) + "px";
+  }
+  (function watchHeroAmount(){
+    const row = document.querySelector(".balance-main");
+    const refit = () => {
+      if(fitHeroRaf) return;
+      fitHeroRaf = requestAnimationFrame(() => { fitHeroRaf = 0; fitHeroAmount(); });
+    };
+    if(row && window.ResizeObserver){
+      new ResizeObserver(() => {
+        const w = row.clientWidth;
+        if(Math.abs(w - fitHeroLastW) < 1) return; // chỉ phản ứng khi CHIỀU RỘNG đổi, tránh vòng lặp
+        fitHeroLastW = w; refit();
+      }).observe(row);
+    }
+    window.addEventListener("resize", refit, { passive: true });
+    if(document.fonts && document.fonts.ready) document.fonts.ready.then(refit); // font tải xong chữ số đổi độ rộng -> tính lại
+  })();
+
   function renderHero(totals, balance, grandTotal){
     const ownerLabel = document.getElementById("ownerLabel");
     const balNum = document.getElementById("balanceNumber");
@@ -1096,8 +1152,16 @@
     const isZero = Math.abs(balance.net) < 0.01;
     const dir = isZero ? "zero" : (balance.net > 0 ? "to-chong" : "to-vk");
     ownerLabel.textContent = isZero ? "Đã cân bằng" : (balance.net > 0 ? "Vợ đang nợ Chồng" : "Chồng đang nợ Vợ");
-    animateValue(balNum, isZero ? 0 : Math.abs(balance.net));
+    const balTarget = isZero ? 0 : Math.abs(balance.net);
+    const balChanged = Math.abs(Number(balNum.dataset.animVal || 0) - balTarget) >= 0.001;
+    animateValue(balNum, balTarget, money, setHeroAmount);
+    balNum.dataset.final = money(balTarget);
     balNum.className = "balance-number " + dir;
+    fitHeroAmount();
+    if(balChanged && balNum.dataset.seen === "1" && !prefersReducedMotion() && document.documentElement.getAttribute("data-perf") !== "lite"){
+      balNum.classList.remove("bn-bump"); void balNum.offsetWidth; balNum.classList.add("bn-bump");
+    }
+    balNum.dataset.seen = "1";
     balanceCard.className = "balance-card " + dir;
     ownerIcon.style.color = isZero ? "var(--zero)" : (dir === "to-chong" ? "var(--chong-soft)" : "var(--vk-soft)");
     ownerIcon.innerHTML = isZero
@@ -5374,7 +5438,7 @@ initParticleNetwork();
   }
   navigator.serviceWorker.addEventListener("message", function(e){
     if(e.data && e.data.type === "version"){
-      versionText = "Phiên bản " + e.data.version + " · bấm để kiểm tra";
+      versionText = "Phiên bản " + e.data.version;
       showVersion(versionText);
     }
   });

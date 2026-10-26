@@ -1785,3 +1785,37 @@ html[data-perf="lite"] .t-row-wrap.row-dup .t-row{ box-shadow:inset 2px 0 0 var(
   #entryForm.dup-open > label.field, #entryForm.dup-open > .modal-actions{ animation:none !important; }
   .t-row-wrap.row-dup .t-row{ box-shadow:inset 2px 0 0 var(--c, var(--chong)), inset 0 0 0 1.5px var(--dup-c); }
 }
+
+
+/* ============ Số tiền chính (khối "Vợ đang nợ Chồng") ============
+   - To hơn (tự co vừa khung bằng JS), chữ số dạng tỉ lệ nên "11" không còn dính nhau như trước.
+   - Đơn vị ₫ nhỏ và mờ, số là tâm điểm. Quầng sáng đặt PHÍA SAU bằng gradient tĩnh thay cho filter: drop-shadow
+     (filter đó bị vẽ lại từng khung hình trong lúc số đếm lên -> tốn pin). */
+.balance-label-row{ margin-bottom:10px; }
+.balance-label{ font-size:13px; letter-spacing:.01em; color:var(--text-muted); }
+.balance-main{ position:relative; flex-wrap:nowrap; gap:10px 12px; }
+.balance-main::before{
+  content:""; position:absolute; z-index:-1; pointer-events:none; left:-18px; top:50%;
+  width:min(78%, 300px); height:170%; transform:translate3d(0,-50%,0);
+  background:radial-gradient(closest-side, rgba(var(--dir-rgb),0.30), rgba(var(--dir-rgb),0.10) 58%, transparent);
+}
+.balance-main .balance-number{
+  flex:1 1 auto; min-width:0; margin:0; text-align:left;
+  font-size:clamp(30px, 10.4vw, 44px); line-height:1.04; font-weight:700;
+  letter-spacing:-0.022em; font-variant-numeric:lining-nums proportional-nums;
+  filter:none !important; transform-origin:left center;
+}
+.balance-main .balance-number.to-chong{ background-image:linear-gradient(100deg, #fff 0%, #fff 24%, var(--chong-soft) 68%, var(--chong) 100%); }
+.balance-main .balance-number.to-vk{ background-image:linear-gradient(100deg, #fff 0%, #fff 24%, var(--vk-soft) 68%, var(--vk) 100%); }
+.balance-main .balance-number.zero{ background-image:linear-gradient(100deg, #fff 0%, #fff 30%, var(--zero) 100%); }
+.bn-int{ white-space:nowrap; }
+.bn-unit{ font-size:.5em; font-weight:600; letter-spacing:0; margin-left:.16em; opacity:.8; }
+.balance-number.bn-bump{ animation:bnBump .5s var(--spring); }
+@keyframes bnBump{ 0%{ transform:scale(.955); } 100%{ transform:scale(1); } }
+@media (max-width:480px){
+  .balance-main .balance-number{ font-size:clamp(30px, 10.4vw, 42px); }
+}
+html[data-perf="lite"] .balance-number.bn-bump{ animation:none; }
+html[data-perf="lite"] .balance-main::before{ background:radial-gradient(closest-side, rgba(var(--dir-rgb),0.2), transparent); }
+@media (prefers-reduced-motion:reduce){ .balance-number.bn-bump{ animation:none; } }
+html[data-theme="light"] .balance-main::before{ background:radial-gradient(closest-side, rgba(var(--dir-rgb),0.16), transparent); }
