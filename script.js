@@ -3227,8 +3227,10 @@
   }
   const EXCEL_LOAD_ERROR = "Chưa tải được thư viện Excel — kiểm tra kết nối mạng rồi thử lại.";
 
-  const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (nghìn đ)", "Danh mục", "ID", "Cập nhật lúc (ms)", "Ghi chú", "Công thức"];
-  const XLSX_AMOUNT_FMT = '#,##0" đ"';
+  // Thứ tự cột: A Ngày · B Tên · C Số tiền (ĐỒNG) · D Danh mục · E Ghi chú · F Công thức · G ID (ẩn) · H Cập nhật lúc (ẩn).
+  // Khi nhập, app tìm cột theo TÊN tiêu đề nên file cũ (số tiền "nghìn đ", ID ở cột E) vẫn đọc được.
+  const XLSX_HEADER = ["Ngày", "Tên khoản chi", "Số tiền (đ)", "Danh mục", "Ghi chú", "Công thức", "ID", "Cập nhật lúc (ms)"];
+  const XLSX_AMOUNT_FMT = '#,##0" ₫"';
   // Biểu tượng màu thay cho tô màu ô: bản xlsx miễn phí đang dùng KHÔNG ghi được màu nền/màu chữ khi
   // tạo file mới (chỉ giữ lại được style nếu đọc từ file Excel đã có sẵn) — dùng emoji màu để vẫn phân
   // biệt được Chồng/Vợ bằng mắt khi mở file, mà không cần thêm thư viện ngoài.
@@ -3286,6 +3288,7 @@
   });
   function openExportModal(){
     setExcelTab("export");
+    refreshImportUndoUI();
     const monthKeys = Object.keys(monthsData).sort().reverse();
     exportMonthList.innerHTML = "";
     if(monthKeys.length === 0){
@@ -3339,10 +3342,126 @@
     }catch(err){ showErrorBanner("export: " + err.message); }
   });
 
-  // Dựng 1 sheet cho 1 tháng: dữ liệu đã lọc + khối "Tổng theo danh mục" (A2) + khối "Cân bằng
-  // Chồng/Vợ" (A5), dùng công thức Excel thật (SUMIF/SUM) tham chiếu đúng vùng dữ liệu — công thức
-  // chia 2 / chia 3 / trừ "thiếu" lấy đúng theo computeBalance() app đang dùng ở màn hình chính, nên
-  // mở file lên số dư luôn khớp với app. (A4: định dạng số tiền, đóng băng dòng đầu, auto-filter.)
+  // ---------- Gói .xlsx tối giản ----------
+  // SheetJS bản miễn phí KHÔNG ghi được: đóng băng dòng tiêu đề, danh sách chọn (dropdown). Sau khi SheetJS tạo file, mở gói zip,
+  // chèn 2 thứ đó vào XML của từng sheet rồi đóng gói lại. Bước này lỗi ở bất kỳ đâu thì dùng nguyên file gốc, không mất gì.
+  const ZIP_CRC_TABLE = (function(){
+    const t = new Uint32Array(256);
+    for(let n = 0; n < 256; n++){ let c = n; for(let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+    return t;
+  })();
+  function zipCrc32(u8){
+    let c = 0xFFFFFFFF;
+    for(let i = 0; i < u8.length; i++) c = ZIP_CRC_TABLE[(c ^ u8[i]) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  async function zipInflateRaw(u8){
+    const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function zipRead(u8){
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let e = u8.length - 22;
+    while(e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if(e < 0) throw new Error("zip: không thấy cuối gói");
+    const count = dv.getUint16(e + 10, true);
+    let p = dv.getUint32(e + 16, true);
+    const dec = new TextDecoder();
+    const files = [];
+    for(let i = 0; i < count; i++){
+      if(dv.getUint32(p, true) !== 0x02014b50) throw new Error("zip: mục lục hỏng");
+      const method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true);
+      const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+      const lho = dv.getUint32(p + 42, true);
+      const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+      const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+      const raw = u8.subarray(start, start + csize);
+      let data;
+      if(method === 0) data = raw.slice();
+      else if(method === 8) data = await zipInflateRaw(raw);
+      else throw new Error("zip: kiểu nén lạ " + method);
+      files.push({ name, data });
+      p += 46 + nlen + elen + clen;
+    }
+    return files;
+  }
+  function zipWrite(files){
+    const enc = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0;
+    files.forEach((f) => {
+      const name = enc.encode(f.name), data = f.data, crc = zipCrc32(data);
+      const lh = new Uint8Array(30 + name.length), lv = new DataView(lh.buffer);
+      lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true);
+      lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0x0021, true);
+      lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+      lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true); lh.set(name, 30);
+      parts.push(lh, data);
+      const ch = new Uint8Array(46 + name.length), cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true); cv.setUint16(12, 0, true); cv.setUint16(14, 0x0021, true);
+      cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
+      cv.setUint16(28, name.length, true); cv.setUint32(42, offset, true); ch.set(name, 46);
+      central.push(ch);
+      offset += lh.length + data.length;
+    });
+    const cdSize = central.reduce((s, c) => s + c.length, 0);
+    const end = new Uint8Array(22), ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+    ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+    const all = parts.concat(central, [end]);
+    const out = new Uint8Array(all.reduce((s, c) => s + c.length, 0));
+    let pos = 0;
+    all.forEach((c) => { out.set(c, pos); pos += c.length; });
+    return out;
+  }
+  const xmlEsc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  function buildValidationXml(dataLastRow){
+    const labels = xmlEsc(CATS.map(c => c.label).join(","));
+    return '<dataValidations count="2">' +
+      '<dataValidation type="whole" operator="between" allowBlank="1" showErrorMessage="1" errorTitle="Ngày không hợp lệ" error="Nhập số nguyên từ 1 đến 31." sqref="A2:A' + dataLastRow + '"><formula1>1</formula1><formula2>31</formula2></dataValidation>' +
+      '<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Danh mục không hợp lệ" error="Hãy chọn một danh mục trong danh sách." sqref="D2:D' + dataLastRow + '"><formula1>"' + labels + '"</formula1></dataValidation>' +
+      '</dataValidations>';
+  }
+  async function patchXlsxBytes(bytes, sheetPatches){
+    try{
+      if(typeof DecompressionStream === "undefined" || typeof Blob === "undefined") return bytes;
+      const files = await zipRead(bytes);
+      const dec = new TextDecoder(), enc = new TextEncoder();
+      sheetPatches.forEach((p, i) => {
+        const f = files.find(x => x.name === "xl/worksheets/sheet" + (i + 1) + ".xml");
+        if(!f) throw new Error("thiếu sheet" + (i + 1));
+        let xml = dec.decode(f.data);
+        if(!/<sheetViews>[\s\S]*?<\/sheetViews>/.test(xml)) throw new Error("không thấy sheetViews");
+        xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,
+          '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>');
+        xml = xml.replace(/hidden="true"/g, 'hidden="1"'); // Excel đọc "1" chắc chắn hơn "true"
+        const dv = buildValidationXml(p.dataLastRow);
+        xml = /<ignoredErrors/.test(xml) ? xml.replace("<ignoredErrors", dv + "<ignoredErrors") : xml.replace("</worksheet>", dv + "</worksheet>");
+        f.data = enc.encode(xml);
+      });
+      const out = zipWrite(files);
+      const check = await zipRead(out); // đọc lại thử: không đọc được thì bỏ bản vá
+      if(check.length !== files.length) throw new Error("đóng gói lại sai số file");
+      return out;
+    }catch(err){
+      console.warn("Bỏ qua bước bổ sung định dạng Excel:", err);
+      return bytes;
+    }
+  }
+  function downloadBytes(bytes, filename){
+    const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // Dựng 1 sheet cho 1 tháng. Số tiền xuất bằng ĐỒNG đầy đủ (app lưu theo nghìn đồng, nhân 1000 khi xuất) để Excel hiện đúng.
+  // Cột Danh mục ghi TÊN tiếng Việt (có danh sách chọn); ID và thời gian cập nhật nằm ở 2 cột ẩn cuối (G, H).
+  // Các ô công thức đều có sẵn kết quả để trình xem trước trên điện thoại cũng hiện đúng số.
   function buildMonthSheet(monthKey, selectedCatIds, dayFrom, dayTo){
     const rawEntries = (monthsData[monthKey] || []).filter(e => {
       if(!selectedCatIds.has(e.category)) return false;
@@ -3352,8 +3471,10 @@
       return true;
     }).slice().sort((a,b) => (Number(a.day)||0) - (Number(b.day)||0));
 
+    const toDong = (v) => Math.round((Number(v) || 0) * 1000);
+    const labelById = Object.fromEntries(CATS.map(c => [c.id, c.label]));
     const N = rawEntries.length;
-    const dataRows = rawEntries.map(e => [e.day, e.name, e.amount, e.category, e.id, e.updatedAt || 0, e.note || "", e.amountFormula || ""]);
+    const dataRows = rawEntries.map(e => [Number(e.day) || 1, e.name, toDong(e.amount), labelById[e.category] || String(e.category || ""), e.note || "", e.amountFormula || "", e.id, e.updatedAt || 0]);
     const aoa = [XLSX_HEADER].concat(dataRows);
 
     const dataFirstRow = 2;
@@ -3361,21 +3482,27 @@
     const dataRangeAmt = "C" + dataFirstRow + ":C" + dataLastRow;
     const dataRangeCat = "D" + dataFirstRow + ":D" + dataLastRow;
 
-    // ---- A2: khối "Tổng theo danh mục" ----
+    // giá trị tính sẵn (đồng) cho từng danh mục
+    const sums = {};
+    CATS.forEach(c => { sums[c.id] = 0; });
+    rawEntries.forEach(e => { if(e.category in sums) sums[e.category] += toDong(e.amount); });
+    const grand = rawEntries.reduce((s, e) => s + toDong(e.amount), 0);
+
+    // ---- Khối "Tổng theo danh mục" ----
     aoa.push([]);
     aoa.push(["── TỔNG THEO DANH MỤC ──"]);
-    aoa.push(["Danh mục", "", "Tổng tiền", "Mỗi người (nếu có chia)"]);
-    const catTotalRow = {}; // catId -> số dòng chứa tổng của danh mục đó (dùng lại cho khối cân bằng bên dưới)
+    aoa.push(["Danh mục", null, "Tổng tiền", "Mỗi người (nếu có chia)"]);
+    const catTotalRow = {};
     CATS.forEach(c => {
-      if(!selectedCatIds.has(c.id)) return; // danh mục bị lọc bỏ thì không liệt kê
+      if(!selectedCatIds.has(c.id)) return;
       catTotalRow[c.id] = aoa.length + 1;
       const emoji = CAT_EMOJI[c.id] ? CAT_EMOJI[c.id] + " " : "";
-      aoa.push([emoji + c.label.replace(/\s*·\s*chia\s*\d+/i, ""), "", 0, ""]);
+      aoa.push([emoji + c.label.replace(/\s*·\s*chia\s*\d+/i, ""), null, 0, null]);
     });
     const totalRowNum = aoa.length + 1;
-    aoa.push(["TỔNG CỘNG THÁNG", "", 0, ""]);
+    aoa.push(["TỔNG CỘNG THÁNG", null, 0, null]);
 
-    // ---- A5: khối "Cân bằng Chồng / Vợ" — đúng công thức computeBalance() của app ----
+    // ---- Khối "Cân bằng Chồng / Vợ" — đúng công thức computeBalance() của app ----
     let balanceRows = null;
     const canHalf = !!(catTotalRow.ck_tinh && catTotalRow.vk_tinh);
     const canDebt = !!(catTotalRow.ck_thieu && catTotalRow.vk_thieu);
@@ -3383,56 +3510,59 @@
     if(canHalf || canDebt || canThird){
       aoa.push([]);
       aoa.push(["── CÂN BẰNG CHỒNG / VỢ ──"]);
-      aoa.push(["Hạng mục", "", "Số tiền", ""]);
+      aoa.push(["Hạng mục", null, "Số tiền", null]);
       balanceRows = {};
-      if(canHalf){ balanceRows.halfRow = aoa.length + 1; aoa.push(["Chồng tính · chia 2  −  Vợ tính · chia 2  (÷2)", "", 0, ""]); }
-      if(canDebt){ balanceRows.debtRow = aoa.length + 1; aoa.push(["Vợ thiếu  −  Chồng thiếu", "", 0, ""]); }
-      if(canThird){ balanceRows.thirdRow = aoa.length + 1; aoa.push(["Chồng tính chung · chia 3  −  Vợ tính chung · chia 3  (÷3)", "", 0, ""]); }
+      if(canHalf){ balanceRows.halfRow = aoa.length + 1; aoa.push(["Chồng tính · chia 2  −  Vợ tính · chia 2  (÷2)", null, 0, null]); }
+      if(canDebt){ balanceRows.debtRow = aoa.length + 1; aoa.push(["Vợ thiếu  −  Chồng thiếu", null, 0, null]); }
+      if(canThird){ balanceRows.thirdRow = aoa.length + 1; aoa.push(["Chồng tính chung · chia 3  −  Vợ tính chung · chia 3  (÷3)", null, 0, null]); }
       balanceRows.netRow = aoa.length + 1;
-      aoa.push(["=> Số dư (dương = Vợ nợ Chồng · âm = Chồng nợ Vợ)", "", 0, ""]);
+      aoa.push(["=> Số dư (dương = Vợ nợ Chồng · âm = Chồng nợ Vợ)", null, 0, null]);
     } else if(Object.keys(catTotalRow).length > 0){
       aoa.push([]);
       aoa.push(["(Đã lọc bỏ hết danh mục liên quan nên không tính được Cân bằng Chồng/Vợ.)"]);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    function setFormula(row, col, formula){
-      ws[col + row] = { t: "n", f: formula, z: XLSX_AMOUNT_FMT };
+    function setFormula(row, col, formula, value){
+      ws[col + row] = { t: "n", f: formula, v: value, z: XLSX_AMOUNT_FMT };
     }
-    if(N > 0){
-      for(let r = dataFirstRow; r <= dataLastRow; r++){
-        const ref = "C" + r;
-        if(ws[ref]) ws[ref].z = XLSX_AMOUNT_FMT;
-      }
+    for(let r = dataFirstRow; r <= 1 + N; r++){
+      const ref = "C" + r;
+      if(ws[ref]) ws[ref].z = XLSX_AMOUNT_FMT;
     }
     CATS.forEach(c => {
       const rowNum = catTotalRow[c.id];
       if(!rowNum) return;
-      setFormula(rowNum, "C", N > 0 ? 'SUMIF(' + dataRangeCat + ',"' + c.id + '",' + dataRangeAmt + ')' : "0");
+      // Điều kiện SUMIF là TÊN danh mục đúng như đang ghi ở cột D của các dòng dữ liệu.
+      setFormula(rowNum, "C", N > 0 ? 'SUMIF(' + dataRangeCat + ',"' + c.label.replace(/"/g, '""') + '",' + dataRangeAmt + ')' : "0", sums[c.id]);
       const m = c.label.match(/chia\s*(\d+)/i);
-      if(m) setFormula(rowNum, "D", "C" + rowNum + "/" + m[1]);
+      if(m) setFormula(rowNum, "D", "C" + rowNum + "/" + m[1], sums[c.id] / Number(m[1]));
     });
-    setFormula(totalRowNum, "C", N > 0 ? "SUM(" + dataRangeAmt + ")" : "0");
+    setFormula(totalRowNum, "C", N > 0 ? "SUM(" + dataRangeAmt + ")" : "0", grand);
     if(balanceRows){
-      if(balanceRows.halfRow) setFormula(balanceRows.halfRow, "C", "(C" + catTotalRow.ck_tinh + "-C" + catTotalRow.vk_tinh + ")/2");
-      if(balanceRows.debtRow) setFormula(balanceRows.debtRow, "C", "(C" + catTotalRow.vk_thieu + "-C" + catTotalRow.ck_thieu + ")");
-      if(balanceRows.thirdRow) setFormula(balanceRows.thirdRow, "C", "(C" + catTotalRow.ck_chung + "-C" + catTotalRow.vk_chung + ")/3");
+      const half = ((sums.ck_tinh || 0) - (sums.vk_tinh || 0)) / 2;
+      const debt = (sums.vk_thieu || 0) - (sums.ck_thieu || 0);
+      const third = ((sums.ck_chung || 0) - (sums.vk_chung || 0)) / 3;
+      if(balanceRows.halfRow) setFormula(balanceRows.halfRow, "C", "(C" + catTotalRow.ck_tinh + "-C" + catTotalRow.vk_tinh + ")/2", half);
+      if(balanceRows.debtRow) setFormula(balanceRows.debtRow, "C", "(C" + catTotalRow.vk_thieu + "-C" + catTotalRow.ck_thieu + ")", debt);
+      if(balanceRows.thirdRow) setFormula(balanceRows.thirdRow, "C", "(C" + catTotalRow.ck_chung + "-C" + catTotalRow.vk_chung + ")/3", third);
       const parts = [];
-      if(balanceRows.halfRow) parts.push("C" + balanceRows.halfRow);
-      if(balanceRows.debtRow) parts.push("C" + balanceRows.debtRow);
-      if(balanceRows.thirdRow) parts.push("C" + balanceRows.thirdRow);
-      setFormula(balanceRows.netRow, "C", parts.join("+"));
+      let net = 0;
+      if(balanceRows.halfRow){ parts.push("C" + balanceRows.halfRow); net += half; }
+      if(balanceRows.debtRow){ parts.push("C" + balanceRows.debtRow); net += debt; }
+      if(balanceRows.thirdRow){ parts.push("C" + balanceRows.thirdRow); net += third; }
+      setFormula(balanceRows.netRow, "C", parts.join("+"), net);
     }
 
-    // ---- A4: cột rộng vừa nội dung, đóng băng dòng tiêu đề, bật auto-filter cho vùng dữ liệu ----
-    ws["!cols"] = [{wch:6},{wch:28},{wch:14},{wch:14},{wch:18},{wch:16},{wch:34},{wch:16}];
-    ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
+    ws["!cols"] = [{wch:6},{wch:28},{wch:16},{wch:26},{wch:32},{wch:16},{wch:18,hidden:true},{wch:16,hidden:true}];
     if(N > 0) ws["!autofilter"] = { ref: "A1:H" + dataLastRow };
-    return ws;
+    return { ws, dataLastRow };
   }
 
-  document.getElementById("exportConfirmBtn").addEventListener("click", () => {
+  let exportBusy = false;
+  document.getElementById("exportConfirmBtn").addEventListener("click", async () => {
+    if(exportBusy) return;
+    exportBusy = true;
     try{
       const selectedMonths = Array.from(exportMonthList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value);
       const selectedCats = new Set(Array.from(exportCatList.querySelectorAll(".export-chip.active")).map(c => c.dataset.value));
@@ -3442,19 +3572,471 @@
       let dayTo = exportDayTo.value.trim() === "" ? null : Math.max(1, Math.min(31, Number(exportDayTo.value)));
       if(dayFrom !== null && dayTo !== null && dayFrom > dayTo){ const tmp = dayFrom; dayFrom = dayTo; dayTo = tmp; }
 
+      const months = selectedMonths.slice().sort();
       const wb = XLSX.utils.book_new();
-      selectedMonths.slice().sort().forEach(monthKey => {
-        const ws = buildMonthSheet(monthKey, selectedCats, dayFrom, dayTo);
+      const patches = [];
+      months.forEach(monthKey => {
+        const built = buildMonthSheet(monthKey, selectedCats, dayFrom, dayTo);
         // Tên sheet Excel tối đa 31 ký tự, không chứa : \ / ? * [ ] — mã tháng "2026-07" luôn an toàn.
-        XLSX.utils.book_append_sheet(wb, ws, monthKey.slice(0, 31));
+        XLSX.utils.book_append_sheet(wb, built.ws, monthKey.slice(0, 31));
+        patches.push({ dataLastRow: built.dataLastRow });
       });
-      const stamp = new Date().toISOString().slice(0,10);
-      XLSX.writeFile(wb, "so-chi-tieu-" + stamp + ".xlsx");
+      let bytes = new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+      bytes = await patchXlsxBytes(bytes, patches);
+      const fname = "so-chi-tieu_" + (months.length === 1 ? months[0] : months[0] + "_" + months[months.length - 1]) + ".xlsx";
+      downloadBytes(bytes, fname);
       closeExportModal();
     }catch(err){ showErrorBanner("export: " + err.message); }
+    finally{ exportBusy = false; }
   });
 
-  // ---------- Nhập từ Excel (B) ----------
+  // ---------- Nhập từ Excel ----------
+  const IMPORT_MAX_BYTES = 15 * 1024 * 1024;
+  const IMPORT_BIG_AMOUNT = 50000; // ≥ 50 triệu đồng (đơn vị nghìn) thì nhắc kiểm tra đơn vị
+  const normKey = (s) => stripDiacritics(String(s == null ? "" : s)).replace(/[^a-z0-9]+/g, " ").trim();
+  // Tra danh mục không phân biệt hoa/thường/dấu: nhận mã (ck_tinh), tên cũ (Ck tính), tên đầy đủ, tên không "· chia N".
+  const CAT_LOOKUP = (function(){
+    const m = new Map();
+    const put = (k, id) => { k = normKey(k); if(k && !m.has(k)) m.set(k, id); };
+    CATS.forEach(c => { put(c.id, c.id); put(c.legacy, c.id); put(c.label, c.id); });
+    CATS.forEach(c => { put(c.label.replace(/\s*·\s*chia\s*\d+/i, ""), c.id); });
+    return m;
+  })();
+
+  function normalizeSheetMonth(name){
+    const t = String(name).trim();
+    let m = t.match(/^(\d{4})\s*[-\/.]\s*(\d{1,2})$/), y, mo;
+    if(m){ y = Number(m[1]); mo = Number(m[2]); }
+    else if((m = t.match(/^(\d{1,2})\s*[-\/.]\s*(\d{4})$/))){ mo = Number(m[1]); y = Number(m[2]); }
+    else if((m = stripDiacritics(t).match(/^thang\s*(\d{1,2})\s*[-\/.,· ]*\s*(\d{4})$/))){ mo = Number(m[1]); y = Number(m[2]); }
+    else return null;
+    if(mo < 1 || mo > 12 || y < 2000 || y > 2100) return null;
+    return y + "-" + String(mo).padStart(2, "0");
+  }
+
+  // Tìm cột theo TÊN tiêu đề (nên đổi thứ tự cột hay thêm cột cũng không sao). Không nhận ra tiêu đề thì dùng thứ tự cũ A..H.
+  function mapImportHeader(headerRow){
+    const cols = {}; let unit = null;
+    (headerRow || []).forEach((h, i) => {
+      const k = normKey(h); if(!k) return;
+      if(cols.day == null && /^ngay\b/.test(k)) cols.day = i;
+      else if(cols.name == null && /^(ten|noi dung|khoan chi|dien giai)/.test(k)) cols.name = i;
+      else if(cols.amount == null && /^(so tien|tien|gia tri)/.test(k)){
+        cols.amount = i;
+        if(/\b(nghin|ngan|k)\b/.test(k)) unit = "nghin";
+        else if(/\b(d|dong|vnd)\b/.test(k)) unit = "dong";
+      }
+      else if(cols.category == null && /^(danh muc|loai|nhom)/.test(k)) cols.category = i;
+      else if(cols.note == null && /^(ghi chu|chu thich)/.test(k)) cols.note = i;
+      else if(cols.formula == null && /^cong thuc/.test(k)) cols.formula = i;
+      else if(cols.id == null && /^(id|ma)$/.test(k)) cols.id = i;
+      else if(cols.updated == null && /^cap nhat/.test(k)) cols.updated = i;
+    });
+    if(cols.name == null || cols.amount == null){
+      return { cols: { day: 0, name: 1, amount: 2, category: 3, id: 4, updated: 5, note: 6, formula: 7 }, unit: "nghin", unitAssumed: true, positional: true };
+    }
+    return { cols, unit: unit || "nghin", unitAssumed: !unit, positional: false };
+  }
+
+  function parseLooseNumber(t){
+    let neg = false;
+    if(t[0] === "-"){ neg = true; t = t.slice(1); }
+    if(!/^[\d.,]+$/.test(t) || !/\d/.test(t)) return NaN;
+    const dots = (t.match(/\./g) || []).length, commas = (t.match(/,/g) || []).length;
+    let intPart = t, frac = "";
+    if(dots && commas){
+      const last = Math.max(t.lastIndexOf("."), t.lastIndexOf(","));
+      intPart = t.slice(0, last).replace(/[.,]/g, ""); frac = t.slice(last + 1);
+    }else if(dots + commas > 1){
+      const parts = t.split(dots ? "." : ",");
+      if(!parts.slice(1).every(p => p.length === 3)) return NaN;
+      intPart = parts.join("");
+    }else if(dots + commas === 1){
+      const sep = dots ? "." : ",";
+      const pr = t.split(sep);
+      if(pr[1].length === 3 && pr[0].length >= 1 && pr[0].length <= 3 && pr[0] !== "0"){ intPart = pr[0] + pr[1]; }
+      else{ intPart = pr[0] || "0"; frac = pr[1]; }
+    }
+    const v = Number(intPart + (frac ? "." + frac : ""));
+    return neg ? -v : v;
+  }
+  // Trả về số tiền theo đơn vị của app (nghìn đồng). unit = đơn vị của cột trong file ("dong" | "nghin").
+  function parseImportAmount(raw, unit){
+    const perUnit = unit === "dong" ? 1 / 1000 : 1; // 1 đơn vị trong ô = bao nhiêu nghìn đồng
+    if(typeof raw === "number"){
+      if(!isFinite(raw)) return { ok: false, msg: "Số tiền không hợp lệ" };
+      if(raw < 0) return { ok: false, msg: "Số tiền âm (" + raw + ")" };
+      return finishAmount(raw * perUnit, null);
+    }
+    const s = String(raw == null ? "" : raw).trim();
+    if(!s) return { ok: false, msg: "Thiếu số tiền" };
+    const low = stripDiacritics(s).replace(/[₫\s]/g, "");
+    const m = low.match(/^(-?[\d.,]+)(k|nghin|ngan|tr|trieu|m|d|dong|vnd)?$/);
+    if(!m) return { ok: false, msg: 'Số tiền không đọc được: "' + s + '"' };
+    const n = parseLooseNumber(m[1]);
+    if(!isFinite(n)) return { ok: false, msg: 'Số tiền không đọc được: "' + s + '"' };
+    if(n < 0) return { ok: false, msg: 'Số tiền âm ("' + s + '")' };
+    let thousands;
+    if(m[2]){
+      const mult = /^(k|nghin|ngan)$/.test(m[2]) ? 1000 : /^(tr|trieu|m)$/.test(m[2]) ? 1e6 : 1; // thành đồng
+      thousands = n * mult / 1000;
+    }else thousands = n * perUnit;
+    thousands = Math.round(thousands * 1000) / 1000;
+    return finishAmount(thousands, 'Số tiền ghi dạng chữ "' + s + '", hiểu là ' + money(thousands));
+  }
+  function finishAmount(thousands, textWarn){
+    thousands = Math.round(thousands * 1000) / 1000;
+    const warns = [];
+    if(textWarn) warns.push(textWarn);
+    if(thousands >= IMPORT_BIG_AMOUNT) warns.push("Số tiền rất lớn (" + money(thousands) + ") — kiểm tra lại đơn vị");
+    return { ok: true, value: thousands, warns };
+  }
+
+  function parseImportDay(raw, monthKey){
+    const dim = daysInMonthKey(monthKey);
+    const parts = monthKey.split("-").map(Number), Y = parts[0], M = parts[1];
+    const checkDay = (d) => (Number.isInteger(d) && d >= 1 && d <= dim) ? { ok: true, day: d } : { ok: false, msg: "Ngày " + d + " không có trong tháng " + monthKey + " (tháng này có " + dim + " ngày)" };
+    const fromParts = (y, m, d) => (m !== M || (y && y !== Y)) ? { ok: false, msg: "Ngày " + d + "/" + m + (y ? "/" + y : "") + " không thuộc tháng " + monthKey } : checkDay(d);
+    if(raw instanceof Date){
+      if(isNaN(raw)) return { ok: false, msg: "Ngày không hợp lệ" };
+      const t = new Date(raw.getTime() + 12 * 3600 * 1000); // +12h để lệch múi giờ/giây không làm nhảy ngày
+      return fromParts(t.getFullYear(), t.getMonth() + 1, t.getDate());
+    }
+    if(typeof raw === "number"){
+      if(Number.isInteger(raw) && raw >= 1 && raw < 36526) return checkDay(raw);
+      if(raw >= 36526 && raw <= 73050){ const t = new Date(Math.round((raw - 25569) * 86400000)); return fromParts(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); }
+      return { ok: false, msg: 'Ngày "' + raw + '" không hợp lệ' };
+    }
+    const s = String(raw == null ? "" : raw).trim();
+    if(!s) return { ok: false, msg: "Thiếu ngày" };
+    const low = stripDiacritics(s).replace(/^ngay\s*/, "");
+    let m;
+    if(/^\d{1,2}$/.test(low)) return checkDay(Number(low));
+    if((m = low.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) return fromParts(Number(m[1]), Number(m[2]), Number(m[3]));
+    if((m = low.match(/^(\d{1,2})[-\/.](\d{1,2})(?:[-\/.](\d{2,4}))?$/))){
+      let y = m[3] ? Number(m[3]) : 0; if(m[3] && m[3].length === 2) y += 2000;
+      return fromParts(y, Number(m[2]), Number(m[1]));
+    }
+    return { ok: false, msg: 'Ngày không đọc được: "' + s + '"' };
+  }
+
+  const cellStr = (v) => (v == null ? "" : String(v)).trim();
+  // Đọc 1 dòng dữ liệu. Có lỗi -> dòng đó KHÔNG được nhập (kèm lý do); cảnh báo -> vẫn nhập nhưng nói rõ đã tự sửa gì.
+  function parseImportRow(row, map, monthKey, xlRow, seenIds){
+    const errors = [], warnings = [];
+    const cell = (k) => (map.cols[k] == null ? "" : row[map.cols[k]]);
+    const name = cellStr(cell("name"));
+    if(!name) errors.push("Thiếu tên khoản chi");
+    const dayR = parseImportDay(cell("day"), monthKey);
+    if(!dayR.ok) errors.push(dayR.msg);
+    const amtR = parseImportAmount(cell("amount"), map.unit);
+    if(!amtR.ok) errors.push(amtR.msg); else amtR.warns.forEach(w => warnings.push(w));
+    const rawCat = cellStr(cell("category"));
+    let category = null;
+    if(!rawCat){ category = "ca_nhan"; warnings.push('Danh mục trống → tự đặt "Cá nhân"'); }
+    else{
+      category = CAT_LOOKUP.get(normKey(rawCat)) || null;
+      if(!category) errors.push('Danh mục không nhận ra: "' + rawCat + '"');
+    }
+    if(errors.length) return { xlRow, errors, warnings };
+    let id = cellStr(cell("id"));
+    if(id){
+      if(seenIds.has(id)){ warnings.push("ID trùng với dòng " + seenIds.get(id) + " → tạo ID mới"); id = genEntryId(); }
+    }else id = genEntryId();
+    seenIds.set(id, xlRow);
+    const entry = {
+      id, day: dayR.day, name, amount: amtR.value, amountFormula: cellStr(cell("formula")), category,
+      note: cellStr(cell("note")), updatedAt: Number(cell("updated")) || 0
+    };
+    return { xlRow, entry, errors, warnings };
+  }
+
+  // Đọc cả workbook: trả về { months: {mk: {entries, issues, stats, notes}}, ignored: [{name, reason}] }
+  function parseImportWorkbook(wb){
+    const months = {}, ignored = [];
+    wb.SheetNames.forEach((sn) => {
+      const mk = normalizeSheetMonth(sn);
+      if(!mk){ ignored.push({ name: sn, reason: 'tên sheet không phải dạng tháng (ví dụ "2026-07")' }); return; }
+      if(months[mk]){ ignored.push({ name: sn, reason: "trùng tháng " + mk + " với sheet đã đọc" }); return; }
+      const ws = wb.Sheets[sn];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+      if(rows.length < 2){ ignored.push({ name: sn, reason: "sheet không có dòng dữ liệu" }); return; }
+      const startRow = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]).s.r : 0;
+      const map = mapImportHeader(rows[0]);
+      let cut = rows.length;
+      for(let i = 1; i < rows.length; i++){ if(cellStr(rows[i][0]).startsWith("──")){ cut = i; break; } } // từ dòng "── TỔNG THEO DANH MỤC ──" trở xuống là khối tính toán
+      const issues = [], entries = [], notes = [], seenIds = new Map();
+      let errors = 0, warns = 0, below = 0;
+      for(let i = 1; i < rows.length; i++){
+        const row = rows[i];
+        if(i >= cut){
+          const dv = row[map.cols.day != null ? map.cols.day : 0];
+          if(i > cut && cellStr(row[map.cols.name]) && typeof dv === "number" && dv >= 1 && dv <= 31) below++;
+          continue;
+        }
+        if(!row.some(v => cellStr(v) !== "")) continue; // dòng trống
+        const xlRow = startRow + i + 1;
+        const r = parseImportRow(row, map, mk, xlRow, seenIds);
+        if(r.entry) entries.push(r.entry);
+        r.errors.forEach(m => { issues.push({ row: xlRow, level: "err", msg: m }); });
+        r.warnings.forEach(m => { issues.push({ row: xlRow, level: "warn", msg: m }); });
+        if(r.errors.length) errors++; else if(r.warnings.length) warns++;
+      }
+      if(map.positional) notes.push("Không nhận ra dòng tiêu đề, đọc theo thứ tự cột A–H như file cũ.");
+      else if(map.unitAssumed) notes.push('Tiêu đề cột số tiền không ghi đơn vị, hiểu là NGHÌN đồng (như app). Nếu file ghi đồng đầy đủ, hãy đổi tiêu đề thành "Số tiền (đ)".');
+      else if(map.unit === "dong") notes.push("Số tiền trong file là ĐỒNG, app tự quy đổi sang nghìn đồng.");
+      if(below > 0) notes.push(below + " dòng nằm dưới khối \"Tổng theo danh mục\" nên bị bỏ qua (hãy chèn dòng mới phía trên khối tổng).");
+      months[mk] = { entries, issues, notes, stats: { valid: entries.length, errors, warnings: warns } };
+    });
+    return { months, ignored };
+  }
+
+  // ---------- Gộp / ghi đè ----------
+  const sameEntryContent = (a, b) =>
+    Number(a.day) === Number(b.day) && String(a.name).trim() === String(b.name).trim() &&
+    Math.abs((Number(a.amount) || 0) - (Number(b.amount) || 0)) < 0.0005 &&
+    a.category === b.category && String(a.note || "").trim() === String(b.note || "").trim() &&
+    String(a.amountFormula || "").trim() === String(b.amountFormula || "").trim();
+
+  // Gộp theo ID, dùng mốc updatedAt: bản mới hơn thắng. Riêng khoản bị sửa TRỰC TIẾP trong Excel (mốc không đổi) thì nhận bản trong file.
+  function planMerge(existing, imported, allowOverride){
+    const map = new Map((existing || []).map(e => [e.id, e]));
+    const out = { add: 0, update: 0, same: 0, keep: 0, keepNames: [], result: null };
+    const now = Date.now();
+    imported.forEach((imp) => {
+      const cur = map.get(imp.id);
+      if(!cur){ map.set(imp.id, Object.assign({}, imp, { updatedAt: imp.updatedAt || now })); out.add++; return; }
+      if(sameEntryContent(cur, imp)){ out.same++; return; }
+      const fu = imp.updatedAt || 0, cu = Number(cur.updatedAt) || 0;
+      if(fu > cu){ map.set(imp.id, Object.assign({}, imp)); out.update++; }
+      else if(fu === cu || fu === 0 || allowOverride){ map.set(imp.id, Object.assign({}, imp, { updatedAt: now })); out.update++; }
+      else{ out.keep++; out.keepNames.push(cur.name); }
+    });
+    out.result = Array.from(map.values());
+    return out;
+  }
+  function planOverwrite(existing, imported){
+    const now = Date.now();
+    return { replaced: (existing || []).length, count: imported.length, result: imported.map(e => Object.assign({}, e, { updatedAt: e.updatedAt || now })) };
+  }
+
+  // ---------- Hoàn tác lần nhập gần nhất ----------
+  const IMPORT_UNDO_KEY = "so_chi_tieu:import_undo:v1";
+  const IMPORT_UNDO_TTL_MS = 10 * 60 * 1000;
+  let importUndoMem = null;
+  function saveImportUndo(snap){
+    importUndoMem = snap;
+    try{ localStorage.setItem(IMPORT_UNDO_KEY, JSON.stringify(snap)); }catch(e){ /* đầy bộ nhớ: vẫn giữ bản trong RAM cho tới khi tải lại trang */ }
+  }
+  function clearImportUndo(){ importUndoMem = null; try{ localStorage.removeItem(IMPORT_UNDO_KEY); }catch(e){} }
+  function loadImportUndo(){
+    let s = importUndoMem;
+    if(!s){ try{ s = JSON.parse(localStorage.getItem(IMPORT_UNDO_KEY) || "null"); }catch(e){ s = null; } }
+    if(!s || !s.months || Date.now() - Number(s.at) > IMPORT_UNDO_TTL_MS){ if(s) clearImportUndo(); return null; }
+    return s;
+  }
+  function refreshImportUndoUI(){
+    const btn = document.getElementById("importUndoBtn");
+    if(!btn) return;
+    const s = loadImportUndo();
+    if(!s){ btn.hidden = true; return; }
+    const mins = Math.max(1, Math.ceil((Number(s.at) + IMPORT_UNDO_TTL_MS - Date.now()) / 60000));
+    const d = new Date(Number(s.at));
+    btn.textContent = "Hoàn tác lần nhập lúc " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + " (còn " + mins + " phút)";
+    btn.hidden = false;
+  }
+  function undoLastImport(){
+    const s = loadImportUndo();
+    if(!s){ showNotice("Không còn lần nhập nào để hoàn tác (chỉ giữ 10 phút)."); refreshImportUndoUI(); return; }
+    const keys = Object.keys(s.months).sort();
+    const restore = {};
+    let removedLocal = 0;
+    keys.forEach((k) => {
+      if(Array.isArray(s.months[k])){ monthsData[k] = s.months[k]; restore[k] = s.months[k]; }
+      else if(monthsData[k]){ removedLocal++; removeMonthLocally(k); } // tháng này trước đó chưa có trên máy
+    });
+    if(!monthsData[currentMonthKey] || !Array.isArray(monthsData[currentMonthKey])){
+      const ks = Object.keys(monthsData).sort().reverse();
+      currentMonthKey = ks[0] || currentMonthKey;
+      if(!monthsData[currentMonthKey]) monthsData[currentMonthKey] = [];
+    }
+    entries = monthsData[currentMonthKey];
+    clearImportUndo();
+    saveCache(); renderMonthUI(); render(); refreshImportUndoUI();
+    const done = () => { showNotice("Đã hoàn tác lần nhập: " + keys.map(monthLabel).join(", ") + (removedLocal ? ". " + removedLocal + " tháng do lần nhập tạo ra đã bị gỡ khỏi máy (trên Google Sheet vẫn còn, xoá bằng menu tháng nếu cần)." : ".")); };
+    if(SHEET_SYNC_URL && Object.keys(restore).length){
+      pushFullMonths(restore).then((r) => {
+        if(r.failed.length) showNotice("Đã hoàn tác trên máy nhưng chưa gửi được lên Google Sheet: " + r.failed.map(f => monthLabel(f.monthKey)).join(", ") + ". App sẽ tự thử lại.");
+        else done();
+      }).catch(() => done());
+    }else done();
+  }
+  document.getElementById("importUndoBtn").addEventListener("click", () => {
+    const s = loadImportUndo();
+    if(!s){ refreshImportUndoUI(); return; }
+    const keys = Object.keys(s.months).sort();
+    openConfirm("Hoàn tác lần nhập gần nhất?",
+      "Đưa " + keys.map(monthLabel).join(", ") + " về đúng như trước khi nhập. Khoản chi thêm hoặc sửa trong các tháng này SAU lúc nhập sẽ mất. Tháng trước đó chưa có trên máy sẽ bị gỡ khỏi máy.",
+      "Hoàn tác", true, undoLastImport);
+  });
+
+  // ---------- Xem trước khi nhập ----------
+  const importPreviewOverlay = document.getElementById("importPreviewOverlay");
+  const importMonthList = document.getElementById("importMonthList");
+  const importModeWarning = document.getElementById("importModeWarning");
+  const importSheetNote = document.getElementById("importSheetNote");
+  const importOptRow = document.getElementById("importOptRow");
+  const importAllowOverride = document.getElementById("importAllowOverride");
+  const importTypeBox = document.getElementById("importTypeBox");
+  const importTypeInput = document.getElementById("importTypeInput");
+  let importPreviewData = null; // { months, ignored }
+  let importMode = "merge";
+  let importChecked = new Set();
+
+  function importExistingCount(mk){ return (monthsData[mk] || []).length; }
+  function importPlanFor(mk){
+    const pm = importPreviewData.months[mk];
+    return importMode === "merge" ? planMerge(monthsData[mk], pm.entries, importAllowOverride.checked) : planOverwrite(monthsData[mk], pm.entries);
+  }
+  function importNeedsTypeConfirm(){
+    if(importMode !== "overwrite") return false;
+    return Array.from(importChecked).some(mk => importExistingCount(mk) > 0);
+  }
+  function setImportMode(mode){
+    importMode = mode;
+    importPreviewOverlay.querySelectorAll(".import-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+    importModeWarning.classList.toggle("mode-merge", mode === "merge");
+    importModeWarning.innerHTML = mode === "overwrite"
+      ? "<b>Ghi đè hoàn toàn:</b> các tháng được tích sẽ bị <b>thay hẳn</b> bằng nội dung file, cả trên máy lẫn Google Sheet. Khoản đang có mà không nằm trong file sẽ mất. Có thể hoàn tác trong 10 phút."
+      : "<b>Gộp thêm:</b> khoản chưa có thì được thêm; khoản trùng ID thì lấy bản <b>mới hơn</b> (so mốc cập nhật). Khoản bạn vừa sửa trực tiếp trong Excel sẽ được nhận. Khoản không có trong file được giữ nguyên.";
+    importOptRow.hidden = mode !== "merge";
+    renderImportList();
+  }
+  function renderImportList(){
+    const pd = importPreviewData;
+    if(!pd) return;
+    const keys = Object.keys(pd.months).sort();
+    importMonthList.innerHTML = keys.map((mk) => {
+      const pm = pd.months[mk], st = pm.stats, plan = importPlanFor(mk);
+      const usable = st.valid > 0;
+      const checked = usable && importChecked.has(mk);
+      const bits = [];
+      if(importMode === "merge"){
+        bits.push("thêm " + plan.add, "cập nhật " + plan.update, "không đổi " + plan.same);
+        if(plan.keep) bits.push('<span class="warn">giữ bản app ' + plan.keep + "</span>");
+      }else{
+        bits.push(plan.count + " khoản");
+        if(plan.replaced) bits.push('<span class="warn">thay ' + plan.replaced + " khoản đang có</span>");
+      }
+      if(st.errors) bits.push('<span class="err">✕ ' + st.errors + " lỗi</span>");
+      if(st.warnings) bits.push('<span class="warn">⚠ ' + st.warnings + " cảnh báo</span>");
+      const extra = [];
+      if(SHEET_SYNC_URL && !monthsData[mk]) extra.push('<div class="import-flag">Tháng này chưa có trên máy. Nếu Google Sheet đã có dữ liệu tháng này, nó sẽ bị thay bằng nội dung file. Muốn gộp thì dùng "＋ Thêm tháng" để tải tháng đó về trước.</div>');
+      pm.notes.forEach(n => extra.push('<div class="import-note">' + escapeHtml(n) + "</div>"));
+      let detail = "";
+      const lines = pm.issues.slice().sort((a, b) => a.row - b.row);
+      if(lines.length || (importMode === "merge" && plan.keepNames.length)){
+        const shown = lines.slice(0, 60).map(i => '<li class="' + i.level + '"><b>Dòng ' + i.row + "</b> " + (i.level === "err" ? "✕ " : "⚠ ") + escapeHtml(i.msg) + "</li>").join("");
+        const more = lines.length > 60 ? "<li>… và " + (lines.length - 60) + " dòng nữa</li>" : "";
+        const keep = (importMode === "merge" && plan.keepNames.length) ? '<li class="warn">Giữ bản trên app (mới hơn file): ' + escapeHtml(plan.keepNames.slice(0, 10).join(", ")) + (plan.keepNames.length > 10 ? "…" : "") + "</li>" : "";
+        detail = '<details class="import-issues"><summary>Chi tiết (' + (lines.length + (keep ? 1 : 0)) + ')</summary><ul>' + keep + shown + more + "</ul></details>";
+      }
+      return '<div class="import-month-item"><label class="import-month-row' + (usable ? "" : " disabled") + '"><input type="checkbox" data-month="' + mk + '"' + (checked ? " checked" : "") + (usable ? "" : " disabled") + ' /><span class="import-month-name">' + escapeHtml(monthLabel(mk)) + '</span><span class="import-month-stats">' + (usable ? bits.join(" · ") : '<span class="err">không có dòng hợp lệ' + (st.errors ? " · ✕ " + st.errors + " lỗi" : "") + "</span>") + "</span></label>" + extra.join("") + detail + "</div>";
+    }).join("");
+    updateImportConfirmState();
+  }
+  function updateImportConfirmState(){
+    const toggle = document.getElementById("importMonthToggleAll");
+    const total = importPreviewData ? Object.keys(importPreviewData.months).filter(k => importPreviewData.months[k].stats.valid > 0).length : 0;
+    toggle.textContent = importChecked.size >= total ? "Bỏ chọn tất cả" : "Chọn tất cả";
+    importTypeBox.hidden = !importNeedsTypeConfirm();
+    if(importTypeBox.hidden) importTypeInput.value = "";
+    document.getElementById("importPreviewConfirm").disabled = importChecked.size === 0;
+  }
+  function openImportPreview(data){
+    importPreviewData = data;
+    importChecked = new Set(Object.keys(data.months).filter(k => data.months[k].stats.valid > 0));
+    importAllowOverride.checked = false;
+    importTypeInput.value = "";
+    if(data.ignored.length){
+      importSheetNote.innerHTML = "<b>Sheet bị bỏ qua:</b> " + data.ignored.map(i => escapeHtml(i.name) + " (" + escapeHtml(i.reason) + ")").join("; ");
+      importSheetNote.hidden = false;
+    }else importSheetNote.hidden = true;
+    setImportMode("merge");
+    importPreviewOverlay.classList.add("show");
+    pauseParticleBg();
+  }
+  function closeImportPreview(){
+    importPreviewOverlay.classList.remove("show");
+    importPreviewData = null;
+    importChecked = new Set();
+    resumeParticleBg();
+  }
+  importPreviewOverlay.querySelectorAll(".import-mode-btn").forEach(b => b.addEventListener("click", () => setImportMode(b.dataset.mode)));
+  importAllowOverride.addEventListener("change", renderImportList);
+  importMonthList.addEventListener("change", (e) => {
+    const cb = e.target.closest("input[data-month]");
+    if(!cb) return;
+    if(cb.checked) importChecked.add(cb.dataset.month); else importChecked.delete(cb.dataset.month);
+    updateImportConfirmState();
+  });
+  document.getElementById("importMonthToggleAll").addEventListener("click", () => {
+    if(!importPreviewData) return;
+    const usable = Object.keys(importPreviewData.months).filter(k => importPreviewData.months[k].stats.valid > 0);
+    importChecked = importChecked.size >= usable.length ? new Set() : new Set(usable);
+    renderImportList();
+  });
+  document.getElementById("importPreviewClose").addEventListener("click", closeImportPreview);
+  document.getElementById("importPreviewCancel").addEventListener("click", closeImportPreview);
+  importPreviewOverlay.addEventListener("click", (e) => { if(e.target === importPreviewOverlay) closeImportPreview(); });
+
+  let importApplying = false;
+  document.getElementById("importPreviewConfirm").addEventListener("click", () => {
+    if(!importPreviewData || importApplying) return;
+    const selected = Array.from(importChecked).filter(k => importPreviewData.months[k] && importPreviewData.months[k].stats.valid > 0).sort();
+    if(!selected.length){ showNotice("Chưa chọn tháng nào để nhập."); return; }
+    if(importNeedsTypeConfirm() && normKey(importTypeInput.value) !== "ghi de"){
+      showNotice('Gõ "ghi đè" vào ô xác nhận để tiếp tục.');
+      importTypeInput.focus();
+      return;
+    }
+    importApplying = true;
+    try{
+      const mode = importMode;
+      const snapshot = { at: Date.now(), mode, months: {} };
+      const toApply = {};
+      let add = 0, upd = 0, kept = 0, total = 0;
+      selected.forEach((mk) => {
+        snapshot.months[mk] = monthsData[mk] ? JSON.parse(JSON.stringify(monthsData[mk])) : null;
+        const plan = importPlanFor(mk);
+        toApply[mk] = plan.result;
+        if(mode === "merge"){ add += plan.add; upd += plan.update; kept += plan.keep; } else total += plan.count;
+      });
+      saveImportUndo(snapshot); // lưu bản sao TRƯỚC khi ghi để luôn hoàn tác được
+      Object.keys(toApply).forEach((mk) => { purgePending(mk); monthsData[mk] = toApply[mk]; });
+      const newest = selected.slice().sort().reverse()[0];
+      currentMonthKey = newest;
+      entries = monthsData[currentMonthKey];
+      saveCache(); renderMonthUI(); render();
+      closeImportPreview();
+      closeExportModal();
+      const summary = mode === "merge"
+        ? "Đã gộp " + selected.length + " tháng: thêm <b>" + add + "</b>, cập nhật <b>" + upd + "</b>" + (kept ? ", giữ bản app " + kept : "")
+        : "Đã ghi đè " + selected.length + " tháng, <b>" + total + "</b> khoản";
+      const undo = () => undoLastImport();
+      if(SHEET_SYNC_URL){
+        showVoiceToast(false, summary + ". Đang gửi lên Google Sheet…", undo);
+        pushFullMonths(toApply).then((result) => {
+          if(result.failed.length) showNotice("Đã nhập trên máy, nhưng chưa gửi được lên Google Sheet: " + result.failed.map(f => monthLabel(f.monthKey)).join(", ") + ". App sẽ tự thử lại.");
+          else showVoiceToast(false, summary + " và đã đồng bộ", undo);
+        }).catch(() => showNotice("Đã nhập trên máy; đồng bộ lên Google Sheet sẽ được thử lại."));
+      }else showVoiceToast(false, summary, undo);
+    }catch(err){
+      showErrorBanner("import: " + err.message);
+    }finally{ importApplying = false; }
+  });
+
+  // ---------- Chọn file ----------
   const importFileInput = document.getElementById("importFileInput");
   document.getElementById("importPickBtn").addEventListener("click", () => {
     // Mở hộp chọn file ngay (trình duyệt chỉ cho phép ngay trong thao tác bấm), đồng thời nạp thư viện Excel ngầm.
@@ -3463,192 +4045,25 @@
     importFileInput.click();
   });
   document.getElementById("importCancelBtn").addEventListener("click", closeExportModal);
-
-  // Nhận diện các dòng "TỔNG THEO DANH MỤC" / "CÂN BẰNG CHỒNG VỢ" mà chính app tự thêm vào cuối mỗi
-  // sheet khi Xuất dữ liệu (xem buildMonthSheet) — để lỡ người dùng nhập lại đúng file vừa xuất ra thì
-  // các dòng tổng đó không bị tính nhầm thành "dòng lỗi", chỉ đơn giản được bỏ qua trong im lặng.
-  function isSummaryMarkerRow(row){
-    const a = String((row && row[0]) || "").trim();
-    if(a.startsWith("──") || a === "TỔNG CỘNG THÁNG" || a === "Danh mục" || a === "Hạng mục" || /^=>/.test(a)) return true;
-    // Các dòng con trong khối tổng (vd. "🔵 Chồng tính", "Vợ thiếu − Chồng thiếu"...) để nhãn ở cột
-    // Ngày thay vì số, và luôn bỏ trống cột Tên khoản chi — dùng đặc điểm này để nhận diện chung,
-    // không cần liệt kê hết từng nhãn danh mục có thể xuất hiện.
-    const dayNum = Number(row && row[0]);
-    const hasName = String((row && row[1]) || "").trim() !== "";
-    if(!hasName && a !== "" && !(Number.isFinite(dayNum) && dayNum >= 1 && dayNum <= 31)) return true;
-    return false;
-  }
-
-  const importPreviewOverlay = document.getElementById("importPreviewOverlay");
-  const importMonthList = document.getElementById("importMonthList");
-  const importMonthToggleAll = document.getElementById("importMonthToggleAll");
-  const importModeWarning = document.getElementById("importModeWarning");
-  const importModeBtns = Array.from(document.querySelectorAll(".import-mode-btn"));
-  let importPreviewMode = "overwrite"; // "overwrite" | "merge"
-  let importPreviewData = null; // { parsedMonths, stats } — chờ người dùng xác nhận ở popup xem trước
-
-  function importModeWarningText(mode){
-    return mode === "merge"
-      ? "Gộp thêm: giữ nguyên các khoản chi hiện có, chỉ THÊM khoản mới hoặc CẬP NHẬT khoản trùng ID lấy từ file — không xoá khoản chi nào đang có sẵn."
-      : "Ghi đè hoàn toàn: THAY THẾ toàn bộ dữ liệu hiện có (cả trên Google Sheet) của các tháng được chọn bằng đúng nội dung trong file. Không thể hoàn tác.";
-  }
-  function setImportMode(mode){
-    importPreviewMode = mode;
-    importModeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
-    importModeWarning.textContent = importModeWarningText(mode);
-    importModeWarning.classList.toggle("mode-merge", mode === "merge");
-  }
-  importModeBtns.forEach(b => b.addEventListener("click", () => setImportMode(b.dataset.mode)));
-
-  function buildImportMonthRow(monthKey, stat){
-    const row = document.createElement("label");
-    row.className = "import-month-row";
-    const existingCount = (monthsData[monthKey] || []).length;
-    const bits = [stat.valid + " khoản chi"];
-    if(stat.skipped > 0) bits.push('<span class="warn">bỏ qua ' + stat.skipped + ' dòng thiếu tên</span>');
-    if(existingCount > 0) bits.push("app đang có sẵn " + existingCount + " khoản");
-    row.innerHTML =
-      '<input type="checkbox" checked data-month="' + escapeHtml(monthKey) + '" />' +
-      '<span class="import-month-name">' + escapeHtml(monthKey) + '</span>' +
-      '<span class="import-month-stats">' + bits.join(" · ") + '</span>';
-    return row;
-  }
-  function refreshImportToggleAllLabel(){
-    const boxes = importMonthList.querySelectorAll("input[type=checkbox]");
-    const allChecked = boxes.length > 0 && Array.from(boxes).every(b => b.checked);
-    importMonthToggleAll.textContent = allChecked ? "Bỏ chọn tất cả" : "Chọn tất cả";
-  }
-  importMonthList.addEventListener("change", (e) => {
-    if(e.target && e.target.matches("input[type=checkbox]")) refreshImportToggleAllLabel();
-  });
-  importMonthToggleAll.addEventListener("click", () => {
-    const boxes = Array.from(importMonthList.querySelectorAll("input[type=checkbox]"));
-    if(boxes.length === 0) return;
-    const allChecked = boxes.every(b => b.checked);
-    boxes.forEach(b => { b.checked = !allChecked; });
-    refreshImportToggleAllLabel();
-  });
-
-  function openImportPreview(parsedMonths, stats){
-    importPreviewData = { parsedMonths, stats };
-    setImportMode("overwrite");
-    importMonthList.innerHTML = "";
-    Object.keys(parsedMonths).sort().reverse().forEach(monthKey => {
-      importMonthList.appendChild(buildImportMonthRow(monthKey, stats[monthKey]));
-    });
-    refreshImportToggleAllLabel();
-    closeAllPopovers();
-    importPreviewOverlay.classList.add("show");
-    pauseParticleBg();
-  }
-  function closeImportPreview(){
-    importPreviewOverlay.classList.remove("show");
-    importPreviewData = null;
-    resumeParticleBg();
-  }
-  document.getElementById("importPreviewClose").addEventListener("click", closeImportPreview);
-  document.getElementById("importPreviewCancel").addEventListener("click", closeImportPreview);
-  importPreviewOverlay.addEventListener("click", (e) => { if(e.target === importPreviewOverlay) closeImportPreview(); });
-
-  // Gộp dữ liệu cũ + dữ liệu nhập theo ID: ID trùng -> lấy bản trong file; ID mới -> thêm vào;
-  // khoản chi cũ không có trong file (ID không trùng) -> giữ nguyên, không bị xoá.
-  function mergeMonthEntries(existing, imported){
-    const byId = new Map((existing || []).map(e => [e.id, e]));
-    (imported || []).forEach(imp => byId.set(imp.id, imp));
-    return Array.from(byId.values());
-  }
-
-  document.getElementById("importPreviewConfirm").addEventListener("click", () => {
-    if(!importPreviewData) return;
-    const checkedBoxes = Array.from(importMonthList.querySelectorAll("input[type=checkbox]:checked"));
-    if(checkedBoxes.length === 0){ showNotice("Chọn ít nhất 1 tháng để nhập."); return; }
-    const selectedMonths = checkedBoxes.map(b => b.dataset.month);
-    const mode = importPreviewMode;
-    const { parsedMonths, stats } = importPreviewData;
-
-    const monthsToApply = {};
-    selectedMonths.forEach(monthKey => {
-      monthsToApply[monthKey] = mode === "merge"
-        ? mergeMonthEntries(monthsData[monthKey], parsedMonths[monthKey])
-        : parsedMonths[monthKey].slice();
-    });
-
-    monthsData = Object.assign({}, monthsData, monthsToApply);
-    currentMonthKey = selectedMonths.slice().sort().reverse()[0];
-    entries = monthsData[currentMonthKey] || [];
-    saveCache();
-    renderMonthUI();
-    render();
-
-    const totalEntries = selectedMonths.reduce((sum, k) => sum + (parsedMonths[k] ? parsedMonths[k].length : 0), 0);
-    const totalSkipped = selectedMonths.reduce((sum, k) => sum + ((stats[k] && stats[k].skipped) || 0), 0);
-    const modeLabel = mode === "merge" ? "gộp thêm" : "ghi đè";
-    closeImportPreview();
-
-    if(SHEET_SYNC_URL){
-      setSyncStatus("Đang đẩy dữ liệu nhập lên Google Sheet…", false);
-      pushFullMonths(monthsToApply).then(result => {
-        const summary =
-          "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng" +
-          (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "") +
-          (result.failed.length > 0
-            ? ' · <span style="color:#e0455a">chưa gửi lên Sheet được ' + result.failed.length + ' tháng (xem dòng trạng thái, app sẽ tự thử lại)</span>'
-            : " · đã đồng bộ Sheet xong");
-        showVoiceToast(result.failed.length > 0, summary);
-      });
-    } else {
-      showNotice("Chưa cấu hình Google Sheet — dữ liệu nhập chỉ được lưu tạm ở máy này, không có bản chính thức trên Sheet.");
-      showVoiceToast(false,
-        "Đã nhập (" + modeLabel + "): <b>" + totalEntries + " khoản chi</b> cho " + selectedMonths.length + " tháng (chỉ lưu tạm ở máy này)" +
-        (totalSkipped > 0 ? " · bỏ qua " + totalSkipped + " dòng thiếu tên" : "")
-      );
-    }
-  });
-
   importFileInput.addEventListener("change", async () => {
     const file = importFileInput.files && importFileInput.files[0];
     importFileInput.value = "";
     if(!file) return;
-    try{ await loadXlsx(); }
-    catch(err){ showNotice(EXCEL_LOAD_ERROR); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      try{
-        const wb = XLSX.read(new Uint8Array(reader.result), { type: "array" });
-        const parsedMonths = {};
-        const stats = {};
-        wb.SheetNames.forEach(sheetName => {
-          const monthKey = sheetName.trim();
-          if(!/^\d{4}-\d{2}$/.test(monthKey)) return; // bỏ qua sheet không đúng dạng "YYYY-MM"
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: "" });
-          const dataRows = rows.slice(1) // bỏ dòng tiêu đề
-            .filter(row => row && row.length && row.some(v => String(v).trim() !== "")) // bỏ dòng trống hoàn toàn
-            .filter(row => !isSummaryMarkerRow(row)); // bỏ khối "Tổng theo danh mục"/"Cân bằng" tự thêm khi Xuất
-          const entriesForMonth = dataRows
-            .filter(row => String(row[1] || "").trim() !== "") // phải có "Tên khoản chi"
-            .map((row, i) => ({
-              day: Number(row[0]) || 1,
-              name: String(row[1] || "").trim(),
-              amount: Number(row[2]) || 0,
-              category: String(row[3] || "ca_nhan").trim() || "ca_nhan",
-              id: String(row[4] || "").trim() || genEntryId(),
-              updatedAt: Number(row[5]) || Date.now(),
-              note: String(row[6] || "").trim(),
-              amountFormula: String(row[7] || "").trim()
-            }));
-          parsedMonths[monthKey] = entriesForMonth;
-          stats[monthKey] = { valid: entriesForMonth.length, skipped: dataRows.length - entriesForMonth.length };
-        });
-
-        const monthCount = Object.keys(parsedMonths).length;
-        if(monthCount === 0){
-          openConfirm("File không hợp lệ", "Không tìm thấy sheet nào đúng định dạng tên tháng \"YYYY-MM\" (ví dụ \"2026-07\") trong file này.", "Đã hiểu", true, () => {});
-          return;
-        }
-        openImportPreview(parsedMonths, stats);
-      }catch(err){ showErrorBanner("import: " + err.message); }
-    };
-    reader.readAsArrayBuffer(file);
+    if(file.size > IMPORT_MAX_BYTES){ showNotice("File quá lớn (" + Math.round(file.size / 1048576) + " MB). Chỉ nhập file Excel dưới 15 MB."); return; }
+    try{
+      await loadXlsx();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+      const data = parseImportWorkbook(wb);
+      if(!Object.keys(data.months).length){
+        showNotice("Không thấy sheet tháng nào trong file." + (data.ignored.length ? " Đã bỏ qua: " + data.ignored.map(i => i.name).join(", ") + ". Tên sheet cần dạng 2026-07." : ""));
+        return;
+      }
+      openImportPreview(data);
+    }catch(err){
+      if(err && (err.message === "load" || err.message === "init")){ showNotice(EXCEL_LOAD_ERROR); return; }
+      showNotice("Không đọc được file Excel này: " + (err && err.message ? err.message : "định dạng lạ") + ". Hãy thử lưu lại thành .xlsx rồi nhập lại.");
+    }
   });
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {

@@ -741,7 +741,7 @@
           </div>
         </div>
 
-        <p class="export-note">File xuất ra sẽ có thêm dòng "Tổng theo danh mục" và "Cân bằng Chồng/Vợ" ở cuối mỗi sheet tháng, tính bằng công thức Excel giống hệt cách app đang tính — mở file lên bạn có thể bấm vào từng ô để xem lại công thức.</p>
+        <p class="export-note">Số tiền xuất bằng <b>đồng</b> đầy đủ, cột Danh mục có danh sách chọn, dòng tiêu đề được cố định. Cuối mỗi sheet tháng có "Tổng theo danh mục" và "Cân bằng Chồng/Vợ" tính bằng công thức Excel giống hệt app. Hai cột <b>ID</b> và <b>Cập nhật lúc</b> (G, H) được ẩn: đừng xoá chúng nếu muốn nhập lại đúng khoản cũ.</p>
 
         <div class="modal-actions">
           <button type="button" class="btn-ghost" id="exportCancelBtn">Huỷ</button>
@@ -758,8 +758,10 @@
         <ol class="xl-steps">
           <li>Chọn file, tốt nhất là file do chính app này xuất ra.</li>
           <li>Xem trước và tích những tháng muốn nhập.</li>
-          <li>Chọn <b>Gộp thêm</b> (giữ dữ liệu cũ) hoặc <b>Ghi đè hoàn toàn</b> (thay thế tháng đó).</li>
+          <li>Xem báo cáo từng dòng (lỗi sẽ bị bỏ qua, cảnh báo cho biết app đã tự sửa gì), rồi chọn <b>Gộp thêm</b> (mặc định, an toàn) hoặc <b>Ghi đè hoàn toàn</b>.</li>
+          <li>Nhập nhầm? Có nút <b>Hoàn tác</b> ngay sau đó, còn hiệu lực 10 phút.</li>
         </ol>
+        <button type="button" class="btn-ghost xl-undo" id="importUndoBtn" hidden></button>
         <div class="modal-actions">
           <button type="button" class="btn-ghost" id="importCancelBtn">Đóng</button>
         </div>
@@ -776,13 +778,19 @@
         </button>
       </div>
 
+      <div class="import-sheet-note" id="importSheetNote" hidden></div>
+
       <div class="export-filter-group">
         <span class="export-filter-label">Chế độ nhập</span>
         <div class="import-mode-row">
-          <button type="button" class="import-mode-btn active" data-mode="overwrite">Ghi đè hoàn toàn</button>
-          <button type="button" class="import-mode-btn" data-mode="merge">Gộp thêm</button>
+          <button type="button" class="import-mode-btn active" data-mode="merge">Gộp thêm</button>
+          <button type="button" class="import-mode-btn" data-mode="overwrite">Ghi đè hoàn toàn</button>
         </div>
         <div class="import-warning-box" id="importModeWarning"></div>
+        <label class="import-opt" id="importOptRow">
+          <input type="checkbox" id="importAllowOverride" />
+          <span>Cho phép file ghi đè cả khoản mà bản trên app <b>mới hơn</b> (mặc định: giữ bản trên app)</span>
+        </label>
       </div>
 
       <div class="export-filter-group">
@@ -791,6 +799,13 @@
           <button type="button" class="export-filter-toggle-all" id="importMonthToggleAll">Bỏ chọn tất cả</button>
         </div>
         <div class="import-month-list" id="importMonthList"></div>
+      </div>
+
+      <div class="import-type-box" id="importTypeBox" hidden>
+        <label>
+          <span>Tháng đang có dữ liệu sẽ bị thay hẳn. Gõ <b>ghi đè</b> để xác nhận:</span>
+          <input type="text" id="importTypeInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ghi đè" />
+        </label>
       </div>
 
       <div class="modal-actions">

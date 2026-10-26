@@ -1819,3 +1819,32 @@ html[data-perf="lite"] .balance-number.bn-bump{ animation:none; }
 html[data-perf="lite"] .balance-main::before{ background:radial-gradient(closest-side, rgba(var(--dir-rgb),0.2), transparent); }
 @media (prefers-reduced-motion:reduce){ .balance-number.bn-bump{ animation:none; } }
 html[data-theme="light"] .balance-main::before{ background:radial-gradient(closest-side, rgba(var(--dir-rgb),0.16), transparent); }
+
+
+/* ============ Nhập Excel: báo cáo từng dòng, xác nhận ghi đè, hoàn tác ============ */
+.import-sheet-note{ font-size:12px; line-height:1.5; padding:9px 12px; border-radius:11px; color:var(--text-mid);
+  background:rgba(240,168,57,0.10); border:1px solid rgba(240,168,57,0.35); }
+.import-sheet-note[hidden], .import-opt[hidden], .import-type-box[hidden], .xl-undo[hidden]{ display:none; }
+.import-opt{ display:flex; align-items:flex-start; gap:9px; margin-top:8px; font-size:12px; line-height:1.45; color:var(--text-muted); cursor:pointer; }
+.import-opt input{ width:16px; height:16px; margin-top:1px; accent-color:var(--chong); flex-shrink:0; }
+.import-month-item{ display:flex; flex-direction:column; gap:6px; }
+.import-month-row.disabled{ opacity:.55; cursor:default; }
+.import-month-row{ flex-wrap:wrap; }
+.import-month-stats{ flex:1 1 140px; }
+.import-month-stats .err{ color:#e0455a; }
+.import-note, .import-flag{ font-size:11.5px; line-height:1.5; padding:0 4px; color:var(--text-faint); }
+.import-flag{ color:#f0a839; }
+.import-issues{ font-size:12px; color:var(--text-muted); padding:0 4px; }
+.import-issues summary{ cursor:pointer; padding:2px 0; color:var(--text-mid); }
+.import-issues ul{ list-style:none; margin:6px 0 2px; padding:0; max-height:160px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.import-issues li{ line-height:1.45; padding:5px 8px; border-radius:8px; background:var(--bg); border:1px solid var(--border2); }
+.import-issues li.err{ border-color:rgba(224,69,90,.45); }
+.import-issues li.warn{ border-color:rgba(240,168,57,.4); }
+.import-issues li b{ color:var(--text-hi); font-weight:600; margin-right:4px; }
+.import-type-box{ padding:10px 12px; border-radius:11px; background:rgba(224,69,90,0.10); border:1px solid rgba(224,69,90,0.4); }
+.import-type-box label{ display:flex; flex-direction:column; gap:7px; font-size:12.5px; color:var(--text-mid); }
+.import-type-box input{ width:100%; padding:9px 11px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text-hi); font:inherit; }
+.import-type-box input:focus{ outline:none; border-color:#e0455a; }
+.xl-undo{ width:100%; margin-top:2px; border:1px dashed var(--border); }
+#importPreviewConfirm:disabled{ opacity:.45; cursor:default; }
+.import-month-list{ max-height:min(320px, 42vh); }
