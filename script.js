@@ -1567,6 +1567,16 @@
   const LEDGER_SWIPE_MAX = 64;      // giới hạn kéo tối đa (px) — chỉ để tạo hiệu ứng, không phải ngưỡng kích hoạt
   const LEDGER_SWIPE_TRIGGER = 44;  // kéo quá ngưỡng này rồi nhả tay mới kích hoạt Sửa/Xoá (vuốt ngắn)
   // Bộ lọc đang áp dụng cho sổ ghi chép (danh mục + ngày + ô tìm kiếm). Dùng chung cho hiển thị và cho "Dọn ghi chú".
+  // Nút "Dọn ghi chú" cạnh ô tìm kiếm: khi ô đang có chữ thì sáng lên + chú thích cho biết sẽ dọn đúng cụm đó.
+  function syncNoteCleanBtn(){
+    const b = document.getElementById("noteCleanBtn");
+    if(!b) return;
+    const t = String(ledgerFilterText || "").trim();
+    b.classList.toggle("has-search", !!t);
+    const label = t ? "Dọn ghi chú “" + (t.length > 28 ? t.slice(0, 27) + "…" : t) + "”" : "Dọn ghi chú hàng loạt";
+    b.setAttribute("aria-label", label);
+    b.setAttribute("title", label);
+  }
   function ledgerFilterPredicate(){
     const searchWords = stripDiacritics(ledgerFilterText).trim().split(/\s+/).filter(Boolean);
     return (e) => {
@@ -1587,13 +1597,14 @@
       (ledgerSortDir === "asc" ? a.day - b.day : b.day - a.day) || String(a.id).localeCompare(String(b.id))
     );
 
-    const clearBtn = document.getElementById("ledgerFilterClear");
-    if(clearBtn) clearBtn.style.display = (ledgerFilterText || ledgerFilterCat || ledgerFilterDay) ? "" : "none";
+    const searchClearBtn = document.getElementById("ledgerSearchClear");
+    if(searchClearBtn) searchClearBtn.classList.toggle("show", !!ledgerFilterText); // nút ✕ trong ô tìm kiếm: chỉ hiện khi có chữ
+    syncNoteCleanBtn();
 
     if(sorted.length === 0){
       body.innerHTML = entries.length === 0
         ? '<div class="empty-state">Chưa có khoản chi nào. Bấm "Thêm khoản chi" để bắt đầu ghi sổ.</div>'
-        : '<div class="empty-state">Không có khoản chi nào khớp với bộ lọc.</div>';
+        : '<div class="empty-state">Không có khoản chi nào khớp với bộ lọc.<button type="button" class="empty-reset" data-act="reset-filters">Xoá bộ lọc</button></div>';
       return;
     }
 
@@ -4328,7 +4339,7 @@
     showNotice("Đã khôi phục ghi chú cũ cho " + r.n + " khoản" + (r.skipped ? ". " + r.skipped + " khoản giữ nguyên vì bạn đã sửa lại ghi chú (hoặc khoản không còn)." : "."));
   }
 
-  document.getElementById("noteCleanBtn").addEventListener("click", () => { closeMenuPanel(); openNoteClean(); });
+  document.getElementById("noteCleanBtn").addEventListener("click", () => { openNoteClean(); });
   document.getElementById("ncClose").addEventListener("click", closeNoteClean);
   document.getElementById("ncCancel").addEventListener("click", closeNoteClean);
   ncOverlay.addEventListener("click", (e) => { if(e.target === ncOverlay) closeNoteClean(); });
@@ -4964,10 +4975,29 @@
   }
   buildLedgerCatList("");
   let ledgerSearchTimer = null;
-  document.getElementById("ledgerSearch").addEventListener("input", (e) => {
+  const ledgerSearchEl = document.getElementById("ledgerSearch");
+  const ledgerSearchClearEl = document.getElementById("ledgerSearchClear");
+  ledgerSearchEl.addEventListener("input", (e) => {
     clearTimeout(ledgerSearchTimer);
     const val = e.target.value;
+    ledgerSearchClearEl.classList.toggle("show", val.length > 0); // hiện/ẩn ✕ ngay khi gõ, không chờ lọc xong
     ledgerSearchTimer = setTimeout(() => { ledgerFilterText = val; renderLedger(); }, 150);
+  });
+  // ✕ trong ô: xoá chữ tìm kiếm (không đụng bộ lọc danh mục/ngày). Giữ nguyên trạng thái gõ: đang gõ thì bàn phím không bị đóng.
+  let searchWasFocused = false;
+  ledgerSearchClearEl.addEventListener("pointerdown", (e) => { searchWasFocused = document.activeElement === ledgerSearchEl; e.preventDefault(); });
+  ledgerSearchClearEl.addEventListener("mousedown", (e) => e.preventDefault());
+  function clearLedgerSearchText(refocus){
+    clearTimeout(ledgerSearchTimer);
+    ledgerSearchEl.value = "";
+    ledgerFilterText = "";
+    ledgerSearchClearEl.classList.remove("show");
+    renderLedger();
+    if(refocus) ledgerSearchEl.focus();
+  }
+  ledgerSearchClearEl.addEventListener("click", () => { clearLedgerSearchText(searchWasFocused || document.activeElement === ledgerSearchEl); searchWasFocused = false; });
+  ledgerSearchEl.addEventListener("keydown", (e) => {
+    if(e.key === "Escape" && ledgerSearchEl.value){ e.preventDefault(); clearLedgerSearchText(true); }
   });
   function updateLedgerSortTrigger(){
     const label = ledgerSortDir === "asc" ? "Sắp xếp: Cũ nhất" : "Sắp xếp: Mới nhất";
@@ -5035,17 +5065,22 @@
     closeLedgerDayPanel();
     renderLedger();
   });
-  document.getElementById("ledgerFilterClear").addEventListener("click", () => {
+  // Xoá HẾT bộ lọc (chữ tìm kiếm + danh mục + ngày). Nút nằm trong thông báo "Không có khoản chi nào khớp".
+  function clearAllLedgerFilters(){
+    clearTimeout(ledgerSearchTimer);
     ledgerFilterText = "";
     ledgerFilterCat = "";
     ledgerFilterDay = "";
-    document.getElementById("ledgerSearch").value = "";
+    ledgerSearchEl.value = "";
     ledgerCatFilterEl.value = "";
     setLedgerCatTrigger("");
     buildLedgerCatList("");
     document.getElementById("ledgerDayTriggerLabel").textContent = "Tất cả ngày";
     buildDayCalendar(currentMonthKey, null, "ledgerDayGrid", "ledgerDayPanelTitle");
     renderLedger();
+  }
+  document.getElementById("ledgerBody").addEventListener("click", (e) => {
+    if(e.target.closest && e.target.closest('[data-act="reset-filters"]')) clearAllLedgerFilters();
   });
   document.getElementById("signOutBtn").addEventListener("click", () => {
     closeMenuPanel();

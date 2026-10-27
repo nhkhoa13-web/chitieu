@@ -1872,3 +1872,61 @@ html[data-theme="light"] .balance-main::before{ background:radial-gradient(close
 #ncConfirm:disabled{ opacity:.45; cursor:default; }
 .nc-item.partial{ border-style:dashed; }
 .nc-badge{ font-style:normal; font-size:10.5px; font-weight:600; margin-left:4px; padding:1px 7px; border-radius:999px; color:#f0a839; background:rgba(240,168,57,.14); border:1px solid rgba(240,168,57,.4); white-space:nowrap; }
+
+
+/* ============ Ô tìm kiếm: kính lúp bên trái + nút ✕ nằm TRONG ô ============ */
+.ledger-search{ position:relative; flex:1 1 70px; min-width:0; }
+.ledger-search .ledger-filter-input{
+  width:100%; box-sizing:border-box; padding:8px 38px 8px 34px; height:34px;
+  transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.ledger-search .ledger-filter-input:focus{ outline:none; border-color:var(--chong); box-shadow:0 0 0 3px rgba(var(--chong-rgb),0.14); }
+.ledger-search-ic{ position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-faint); pointer-events:none; transition:color .18s ease; }
+.ledger-search:focus-within .ledger-search-ic{ color:var(--chong-soft); }
+.ledger-search-clear{
+  position:absolute; right:7px; top:50%; width:22px; height:22px; margin-top:-11px; padding:0;
+  display:grid; place-items:center; border:0; border-radius:50%; cursor:pointer;
+  color:var(--text-muted); background:rgba(var(--chong-rgb),0.14);
+  opacity:0; transform:scale(.55); visibility:hidden;
+  transition:opacity .16s ease, transform .22s var(--spring), background .15s ease, color .15s ease, visibility 0s linear .22s;
+  -webkit-tap-highlight-color:transparent;
+}
+.ledger-search-clear::after{ content:""; position:absolute; inset:-8px; border-radius:50%; } /* vùng chạm rộng ~38px cho ngón tay */
+.ledger-search-clear.show{ opacity:1; transform:scale(1); visibility:visible; transition-delay:0s; }
+.ledger-search-clear:hover{ background:rgba(var(--chong-rgb),0.28); color:var(--text-hi); }
+.ledger-search-clear:active{ transform:scale(.88); }
+.ledger-search-clear:focus-visible{ outline:2px solid var(--chong); outline-offset:1px; }
+html[data-theme="light"] .ledger-search-clear{ background:rgba(16,24,32,0.08); color:var(--text-mid); }
+html[data-theme="light"] .ledger-search-clear:hover{ background:rgba(16,24,32,0.16); color:var(--text-hi); }
+.empty-reset{
+  display:inline-block; margin-left:8px; padding:3px 11px; border-radius:999px; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+  color:var(--chong-soft); background:rgba(var(--chong-rgb),0.12); border:1px solid rgba(var(--chong-rgb),0.35);
+}
+.empty-reset:hover{ background:rgba(var(--chong-rgb),0.22); }
+@media (prefers-reduced-motion:reduce){
+  .ledger-search-clear, .ledger-search .ledger-filter-input, .ledger-search-ic{ transition:none; }
+  .ledger-search-clear{ transform:none; }
+}
+
+
+/* ============ Nút "Dọn ghi chú" cạnh ô tìm kiếm ============ */
+.note-clean-btn{ position:relative; transition:background .18s ease, border-color .18s ease, color .18s ease, transform .2s var(--spring); }
+.note-clean-btn svg{ transition:transform .25s var(--spring); }
+.note-clean-btn:hover svg{ transform:rotate(-14deg) scale(1.06); }
+/* Khi ô tìm kiếm đang có chữ: nút sáng lên và có chấm nhỏ báo "sẽ dùng cụm đang tìm" */
+.note-clean-btn.has-search{
+  color:var(--chong-soft); border-color:rgba(var(--chong-rgb),0.55); background:rgba(var(--chong-rgb),0.12);
+}
+.note-clean-btn.has-search::after{
+  content:""; position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%;
+  background:var(--chong); box-shadow:0 0 0 2px var(--surface), 0 0 8px rgba(var(--chong-rgb),0.7);
+  animation:ncDotIn .3s var(--spring);
+}
+@keyframes ncDotIn{ from{ transform:scale(0); } to{ transform:scale(1); } }
+html[data-theme="light"] .note-clean-btn.has-search::after{ box-shadow:0 0 0 2px var(--surface); }
+html[data-perf="lite"] .note-clean-btn.has-search::after{ animation:none; box-shadow:0 0 0 2px var(--surface); }
+@media (prefers-reduced-motion:reduce){
+  .note-clean-btn, .note-clean-btn svg{ transition:none; }
+  .note-clean-btn:hover svg{ transform:none; }
+  .note-clean-btn.has-search::after{ animation:none; }
+}
