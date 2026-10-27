@@ -4,7 +4,7 @@
  *   dữ liệu chi tiêu luôn đi qua cơ chế đồng bộ + hàng đợi sẵn có của app.
  * - Mỗi lần sửa file giao diện, tăng CACHE_VERSION để máy người dùng nhận bản mới.
  */
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = "so-chi-tieu-shell-" + CACHE_VERSION;
 const CDN_CACHE = "so-chi-tieu-cdn-" + CACHE_VERSION;
 

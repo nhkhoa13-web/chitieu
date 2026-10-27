@@ -529,6 +529,9 @@
   let statusTick = null;
   let syncLock = Promise.resolve();
   let syncInFlight = null;  // mục đang gửi dở
+  let syncInFlightBatch = new Set(); // các mục đang gửi dở trong 1 yêu cầu gộp (updateEntries)
+  let serverBatchOk = true; // false nếu Code.gs chưa hỗ trợ updateEntries -> gửi từng khoản (thử lại khi tải lại app)
+  const SYNC_BATCH_MAX = 100;
   let syncPhase = "idle";   // idle | push | pull
   let lastSyncError = null; // { kind: "network" | "fatal", message }
   let startedWithCache = false;
@@ -722,9 +725,21 @@
       if(q.monthKey !== item.monthKey) continue;
       if(q.action === "syncMonth" || q.action === "deleteMonth") return -1; // mốc cấp tháng: không gộp vượt qua
       if(!q.entry || String(q.entry.id) !== id) continue;
-      return q === syncInFlight ? -1 : i;                                 // mục đang gửi dở: để yên, xếp sau nó
+      return (q === syncInFlight || syncInFlightBatch.has(q)) ? -1 : i;   // mục đang gửi dở: để yên, xếp sau nó
     }
     return -1;
+  }
+  // Nhiều lệnh "sửa khoản" liền nhau cùng 1 tháng (vd. dọn ghi chú hàng loạt) -> gửi gộp 1 yêu cầu thay vì mỗi khoản 1–3 giây.
+  function collectUpdateBatch(){
+    const first = syncQueue[0];
+    if(!first || first.action !== "updateEntry" || !first.entry) return null;
+    const batch = [first];
+    for(let i = 1; i < syncQueue.length && batch.length < SYNC_BATCH_MAX; i++){
+      const q = syncQueue[i];
+      if(q.action !== "updateEntry" || q.monthKey !== first.monthKey || !q.entry) break;
+      batch.push(q);
+    }
+    return batch.length >= 2 ? batch : null;
   }
   function enqueueItem(item){
     const idx = findMergeTarget(item);
@@ -763,7 +778,7 @@
   }
   // Bỏ các thay đổi CHƯA gửi của 1 tháng (sắp bị xoá/ghi đè nguyên tháng nên vô nghĩa). Giữ mục đang gửi dở để thứ tự vẫn đúng.
   function purgePending(monthKey){
-    syncQueue = syncQueue.filter(it => it.monthKey !== monthKey || it === syncInFlight);
+    syncQueue = syncQueue.filter(it => it.monthKey !== monthKey || it === syncInFlight || syncInFlightBatch.has(it));
     rejectedItems = rejectedItems.filter(r => r.item.monthKey !== monthKey);
     saveQueue();
     saveRejected();
@@ -811,20 +826,36 @@
     const staleMonths = new Set(); // tháng có thay đổi bị server bỏ qua vì khoản đó đã có bản mới hơn (từ thiết bị khác)
     let staleCount = 0;
     try{
+      let singleMode = false; // gửi từng khoản (khi gửi gộp bị từ chối hoặc Code.gs chưa hỗ trợ)
       while(syncQueue.length){
         const item = syncQueue[0];
+        const batch = (serverBatchOk && !singleMode) ? collectUpdateBatch() : null;
         syncInFlight = item;
+        if(batch) batch.forEach(b => syncInFlightBatch.add(b));
         try{
-          const resp = await sheetRequest(buildPayload(item));
-          if(resp && resp.stale){ staleCount++; if(item.monthKey) staleMonths.add(item.monthKey); }
-          removeFromQueue(item);
-          saveQueue();   // xong 1 mục -> lưu ngay, tránh gửi lại nếu tải lại trang
+          if(batch){
+            const resp = await sheetRequest({ action: "updateEntries", monthKey: item.monthKey, entries: batch.map(b => b.entry) });
+            const skipped = (resp && resp.staleIds ? resp.staleIds.length : 0) + (resp && resp.missingIds ? resp.missingIds.length : 0);
+            if(skipped){ staleCount += skipped; if(item.monthKey) staleMonths.add(item.monthKey); }
+            batch.forEach(removeFromQueue);
+          }else{
+            const resp = await sheetRequest(buildPayload(item));
+            if(resp && resp.stale){ staleCount++; if(item.monthKey) staleMonths.add(item.monthKey); }
+            removeFromQueue(item);
+          }
+          saveQueue();   // xong -> lưu ngay, tránh gửi lại nếu tải lại trang
           markPushed();
           retryAttempt = 0;
           lastSyncError = null;
         }catch(raw){
           const err = toSyncError(raw);
-          item.attempts = (item.attempts || 0) + 1;
+          if(batch && (err.kind === "rejected" || /Không rõ action/i.test(err.message))){
+            // Gửi gộp không được (Code.gs cũ, hoặc 1 khoản trong lô bị từ chối): quay về gửi TỪNG khoản để chỉ khoản lỗi bị tách riêng.
+            if(/Không rõ action/i.test(err.message)) serverBatchOk = false;
+            singleMode = true;
+            continue;
+          }
+          (batch || [item]).forEach(b => { b.attempts = (b.attempts || 0) + 1; });
           if(err.kind === "rejected"){
             // Sheet từ chối RIÊNG mục này (lỗi dữ liệu) -> tách ra, các mục phía sau vẫn được gửi.
             removeFromQueue(item);
@@ -845,6 +876,7 @@
           break;
         }finally{
           syncInFlight = null;
+          syncInFlightBatch.clear();
         }
       }
     }finally{
@@ -1534,10 +1566,10 @@
   // Vuốt trái = mở form Sửa ngay; vuốt phải = hiện popup xác nhận Xoá ngay (không cần bấm nút riêng).
   const LEDGER_SWIPE_MAX = 64;      // giới hạn kéo tối đa (px) — chỉ để tạo hiệu ứng, không phải ngưỡng kích hoạt
   const LEDGER_SWIPE_TRIGGER = 44;  // kéo quá ngưỡng này rồi nhả tay mới kích hoạt Sửa/Xoá (vuốt ngắn)
-  function renderLedger(){
-    const body = document.getElementById("ledgerBody");
+  // Bộ lọc đang áp dụng cho sổ ghi chép (danh mục + ngày + ô tìm kiếm). Dùng chung cho hiển thị và cho "Dọn ghi chú".
+  function ledgerFilterPredicate(){
     const searchWords = stripDiacritics(ledgerFilterText).trim().split(/\s+/).filter(Boolean);
-    const filtered = entries.filter(e => {
+    return (e) => {
       if(ledgerFilterCat && e.category !== ledgerFilterCat) return false;
       if(ledgerFilterDay && Number(e.day) !== Number(ledgerFilterDay)) return false;
       if(searchWords.length){
@@ -1546,7 +1578,11 @@
         if(!searchWords.every(w => haystack.includes(w))) return false;
       }
       return true;
-    });
+    };
+  }
+  function renderLedger(){
+    const body = document.getElementById("ledgerBody");
+    const filtered = entries.filter(ledgerFilterPredicate());
     const sorted = filtered.slice().sort((a,b) =>
       (ledgerSortDir === "asc" ? a.day - b.day : b.day - a.day) || String(a.id).localeCompare(String(b.id))
     );
@@ -4064,6 +4100,260 @@
       if(err && (err.message === "load" || err.message === "init")){ showNotice(EXCEL_LOAD_ERROR); return; }
       showNotice("Không đọc được file Excel này: " + (err && err.message ? err.message : "định dạng lạ") + ". Hãy thử lưu lại thành .xlsx rồi nhập lại.");
     }
+  });
+
+  // ---------- Dọn ghi chú hàng loạt ----------
+  // CHỈ sửa ô Ghi chú. Ô tìm kiếm vẫn chỉ để lọc hiển thị; hộp thoại này lấy chữ đang tìm làm gợi ý ban đầu rồi tự quét lại
+  // phần ghi chú của từng khoản (đúng cụm, nguyên từ, giữ dấu) — khoản chỉ khớp qua tên/danh mục/số tiền sẽ không bị đụng tới.
+  const NOTE_UNDO_KEY = "so_chi_tieu:note_undo:v1";
+  const NOTE_UNDO_TTL_MS = 10 * 60 * 1000;
+  const NOTE_CLEAN_CONFIRM_FROM = 10; // từ ngần này khoản trở lên phải gõ số lượng để xác nhận
+  let noteUndoMem = null;
+  function saveNoteUndo(s){ noteUndoMem = s; try{ localStorage.setItem(NOTE_UNDO_KEY, JSON.stringify(s)); }catch(e){} }
+  function clearNoteUndo(){ noteUndoMem = null; try{ localStorage.removeItem(NOTE_UNDO_KEY); }catch(e){} }
+  function loadNoteUndo(){
+    let s = noteUndoMem;
+    if(!s){ try{ s = JSON.parse(localStorage.getItem(NOTE_UNDO_KEY) || "null"); }catch(e){ s = null; } }
+    if(!s || !Array.isArray(s.items) || Date.now() - Number(s.at) > NOTE_UNDO_TTL_MS){ if(s) clearNoteUndo(); return null; }
+    return s;
+  }
+
+  const ncOverlay = document.getElementById("noteCleanOverlay");
+  const ncPhrase = document.getElementById("ncPhrase");
+  const ncModeAll = document.getElementById("ncModeAll");
+  const ncScope = document.getElementById("ncScope");
+  const ncSummary = document.getElementById("ncSummary");
+  const ncListWrap = document.getElementById("ncListWrap");
+  const ncList = document.getElementById("ncList");
+  const ncToggleAll = document.getElementById("ncToggleAll");
+  const ncTypeBox = document.getElementById("ncTypeBox");
+  const ncTypeInput = document.getElementById("ncTypeInput");
+  const ncTypeCount = document.getElementById("ncTypeCount");
+  const ncConfirm = document.getElementById("ncConfirm");
+  const ncUndoBtn = document.getElementById("ncUndoBtn");
+  let ncPlan = { items: [], scanned: 0, visibleTotal: 0 };
+  let ncChecked = new Set();
+  let ncTimer = null;
+  let ncApplying = false;
+
+  const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Khớp NGUYÊN CỤM (khoảng trắng linh hoạt), không phân biệt hoa/thường, GIỮ dấu ("chợ" ≠ "cho"), không cắt giữa từ ("chợ lớn" không bị cắt thành "lớn").
+  function buildPhraseRegex(phrase){
+    const p = String(phrase || "").normalize("NFC").trim().replace(/\s+/g, " ");
+    if(!p) return null;
+    try{ return new RegExp("(^|[^\\p{L}\\p{N}])(" + escapeRegExp(p).replace(/ /g, "\\s+") + ")(?![\\p{L}\\p{N}])", "giu"); }
+    catch(e){ return null; }
+  }
+  // Sau khi bỏ cụm: gọn lại khoảng trắng và dấu phân cách thừa ("Mua ở chợ; ăn sáng" -> "ăn sáng").
+  function tidyNote(s){
+    return s.replace(/\s+/g, " ")
+      .replace(/\s+([;,.:!?|])/g, "$1")
+      .replace(/([;,|\/])(\s*[;,|\/])+/g, "$1")
+      .replace(/^[\s;,.:|\/\-–—]+/, "")
+      .replace(/[\s;,:|\/\-–—]+$/, "")
+      .replace(/\s+/g, " ").trim();
+  }
+  const ncListFor = (mk) => mk === currentMonthKey ? entries : monthsData[mk];
+  // Ghi chú có thể gồm nhiều đoạn ngăn bằng ; , | xuống dòng hoặc " - ". Khớp ĐÚNG = có 1 đoạn đúng bằng cụm cần xoá
+  // (vd. "Mua ở chợ" hay "ăn sáng; Mua ở chợ"). Cụm nằm lọt trong câu dài hơn ("Mua ở Chợ Lớn") chỉ là khớp MỘT PHẦN: hiện riêng, không chọn sẵn.
+  const NC_SEP_RE = /(\s*(?:[;,|\n]|\s[-–—]\s)\s*)/;
+  const normSeg = (s) => String(s).normalize("NFC").toLowerCase().replace(/\s+/g, " ").replace(/[.!\s]+$/, "").trim();
+  function removeExactSegments(note, phraseNorm){
+    const parts = String(note).normalize("NFC").split(NC_SEP_RE); // [đoạn, ngăn, đoạn, ngăn, ...]
+    const segs = [], seps = [];
+    parts.forEach((p, i) => { (i % 2 === 0 ? segs : seps).push(p); });
+    const keep = [];
+    let removed = false;
+    segs.forEach((sg, i) => { if(normSeg(sg) === phraseNorm) removed = true; else keep.push(i); });
+    if(!removed) return null;
+    let out = "";
+    keep.forEach((i, k) => { if(k > 0) out += (seps[i - 1] !== undefined ? seps[i - 1] : "; "); out += segs[i]; });
+    return tidyNote(out);
+  }
+
+  function buildNoteCleanPlan(){
+    const plan = { items: [], scanned: 0, visibleTotal: 0, empty: false, exact: 0, partial: 0 };
+    const re = buildPhraseRegex(ncPhrase.value);
+    if(!re){ plan.empty = true; return plan; }
+    const phraseNorm = normSeg(ncPhrase.value);
+    const mode = ncModeAll.checked ? "all" : "phrase";
+    const scope = ncScope.value;
+    const sources = [];
+    if(scope === "all") Object.keys(monthsData).sort().forEach(mk => sources.push({ mk, list: ncListFor(mk) || [] }));
+    else sources.push({ mk: currentMonthKey, list: scope === "visible" ? entries.filter(ledgerFilterPredicate()) : entries });
+    const exact = [], partial = [];
+    sources.forEach((src) => {
+      src.list.forEach((e) => {
+        plan.scanned++;
+        const note = String(e.note || "").normalize("NFC");
+        if(!note.trim()) return;
+        const base = { monthKey: src.mk, id: e.id, day: e.day, name: e.name, amount: e.amount, before: String(e.note) };
+        const seg = removeExactSegments(note, phraseNorm);
+        if(seg !== null){ exact.push(Object.assign(base, { after: mode === "all" ? "" : seg, kind: "exact" })); return; }
+        re.lastIndex = 0;
+        if(!re.test(note)) return;
+        re.lastIndex = 0;
+        partial.push(Object.assign(base, { after: mode === "all" ? "" : tidyNote(note.replace(re, "$1")), kind: "partial" }));
+      });
+    });
+    plan.items = exact.concat(partial);
+    plan.exact = exact.length;
+    plan.partial = partial.length;
+    plan.visibleTotal = scope === "visible" ? plan.scanned : 0;
+    return plan;
+  }
+
+  function renderNoteCleanPlan(){
+    ncPlan = buildNoteCleanPlan();
+    ncChecked = new Set(ncPlan.items.map((it, i) => it.kind === "exact" ? i : -1).filter(i => i >= 0)); // khớp một phần: không chọn sẵn
+    const phrase = ncPhrase.value.trim();
+    if(ncPlan.empty){
+      ncSummary.innerHTML = "Nhập cụm chữ cần xoá khỏi ghi chú.";
+      ncListWrap.hidden = true;
+    }else if(!ncPlan.items.length){
+      ncSummary.innerHTML = "Không có ghi chú nào chứa “<b>" + escapeHtml(phrase) + "</b>” trong phạm vi đã chọn (đã xem " + ncPlan.scanned + " khoản).";
+      ncListWrap.hidden = true;
+    }else{
+      const untouched = ncScope.value === "visible" ? ncPlan.scanned - ncPlan.items.length : 0;
+      ncSummary.innerHTML = "Ghi chú <b>đúng là</b> “<b>" + escapeHtml(phrase) + "</b>”: <b>" + ncPlan.exact + "</b> khoản (đã chọn sẵn)." +
+        (ncPlan.partial ? " Ghi chú chỉ <b>chứa</b> cụm này trong câu dài hơn: <b>" + ncPlan.partial + "</b> khoản (chưa chọn, tự xem xét)." : "") +
+        (untouched > 0 ? " Còn " + untouched + " khoản đang hiện nhưng ghi chú không liên quan — <b>sẽ không bị đổi</b>." : "");
+      ncListWrap.hidden = false;
+    }
+    drawNoteCleanList();
+  }
+  function drawNoteCleanList(){
+    const MAX_SHOWN = 150;
+    const multiMonth = ncScope.value === "all";
+    ncList.innerHTML = ncPlan.items.slice(0, MAX_SHOWN).map((it, i) =>
+      '<label class="nc-item' + (it.kind === "partial" ? " partial" : "") + '"><input type="checkbox" data-i="' + i + '"' + (ncChecked.has(i) ? " checked" : "") + ' />' +
+      '<span class="nc-item-main"><span class="nc-item-top">' + (multiMonth ? escapeHtml(monthLabel(it.monthKey)) + " · " : "") + "Ngày " + escapeHtml(it.day) + " · " + escapeHtml(it.name) + " · " + escapeHtml(money(it.amount)) + (it.kind === "partial" ? ' <em class="nc-badge">nằm trong câu dài hơn</em>' : "") + "</span>" +
+      '<span class="nc-diff"><span class="nc-before">' + escapeHtml(it.before) + '</span><span class="nc-arrow">→</span><span class="nc-after' + (it.after ? "" : " empty") + '">' + (it.after ? escapeHtml(it.after) : "(để trống)") + "</span></span></span></label>"
+    ).join("") + (ncPlan.items.length > MAX_SHOWN ? '<div class="nc-more">… và ' + (ncPlan.items.length - MAX_SHOWN) + " khoản nữa (vẫn được dọn nếu còn chọn)</div>" : "");
+    updateNoteCleanState();
+  }
+  function updateNoteCleanState(){
+    const n = ncChecked.size;
+    ncToggleAll.textContent = n >= ncPlan.items.length ? "Bỏ chọn tất cả" : "Chọn tất cả";
+    const need = n >= NOTE_CLEAN_CONFIRM_FROM;
+    ncTypeBox.hidden = !need;
+    ncTypeCount.textContent = String(n);
+    if(!need) ncTypeInput.value = "";
+    ncConfirm.disabled = n === 0;
+    ncConfirm.textContent = n > 0 ? "Dọn ghi chú (" + n + " khoản)" : "Dọn ghi chú";
+  }
+  function refreshNoteUndoUI(){
+    const s = loadNoteUndo();
+    if(!s){ ncUndoBtn.hidden = true; return; }
+    const mins = Math.max(1, Math.ceil((Number(s.at) + NOTE_UNDO_TTL_MS - Date.now()) / 60000));
+    ncUndoBtn.textContent = "Hoàn tác lần dọn gần nhất: " + s.items.length + " khoản (còn " + mins + " phút)";
+    ncUndoBtn.hidden = false;
+  }
+  function openNoteClean(){
+    const filterActive = !!(ledgerFilterText || ledgerFilterCat || ledgerFilterDay);
+    ncPhrase.value = ledgerFilterText.trim(); // chỉ là gợi ý từ ô tìm kiếm; sửa tuỳ ý. Ô tìm kiếm không bị thay đổi.
+    document.getElementById("ncModePhrase").checked = true;
+    ncScope.querySelector('option[value="visible"]').disabled = !filterActive;
+    ncScope.value = filterActive ? "visible" : "month";
+    ncTypeInput.value = "";
+    refreshNoteUndoUI();
+    renderNoteCleanPlan();
+    ncOverlay.classList.add("show");
+    pauseParticleBg();
+    setTimeout(() => { try{ ncPhrase.focus(); }catch(e){} }, 60);
+  }
+  function closeNoteClean(){
+    ncOverlay.classList.remove("show");
+    resumeParticleBg();
+  }
+
+  // Áp danh sách thay đổi ghi chú: [{monthKey, id, note, ...}]. requireField (tuỳ chọn) = tên trường mà ghi chú HIỆN TẠI phải còn khớp
+  // (dùng cho hoàn tác: nếu bạn đã sửa lại ghi chú đó sau khi dọn thì không ghi đè bản mới của bạn).
+  function applyNoteChanges(changes, requireField){
+    const byMonth = new Map();
+    changes.forEach((c) => { if(!byMonth.has(c.monthKey)) byMonth.set(c.monthKey, []); byMonth.get(c.monthKey).push(c); });
+    const now = Date.now();
+    const queued = [];
+    let n = 0;
+    byMonth.forEach((list, mk) => {
+      const src = ncListFor(mk);
+      if(!src) return;
+      const map = new Map(list.map(c => [String(c.id), c]));
+      const next = src.map((e) => {
+        const c = map.get(String(e.id));
+        if(!c) return e;
+        if(requireField && String(e.note || "").trim() !== String(c[requireField] || "").trim()) return e;
+        n++;
+        const u = Object.assign({}, e, { note: c.note, updatedAt: now });
+        queued.push({ monthKey: mk, entry: u });
+        return u;
+      });
+      if(mk === currentMonthKey){ entries = next; commit(); }
+      else{ monthsData[mk] = next; saveCache(); }
+    });
+    if(SHEET_SYNC_URL && queued.length){
+      queued.forEach(q => enqueueItem({ action: "updateEntry", monthKey: q.monthKey, entry: q.entry }));
+      scheduleSync(300); // các lệnh sửa liền nhau được gửi gộp 1 yêu cầu (xem collectUpdateBatch)
+    }
+    render();
+    return { n, skipped: changes.length - n };
+  }
+
+  function runNoteClean(){
+    if(ncApplying) return;
+    const picked = ncPlan.items.filter((_, i) => ncChecked.has(i));
+    if(!picked.length) return;
+    if(picked.length >= NOTE_CLEAN_CONFIRM_FROM && ncTypeInput.value.trim() !== String(picked.length)){
+      showNotice("Gõ đúng số " + picked.length + " vào ô xác nhận để tiếp tục.");
+      ncTypeInput.focus();
+      return;
+    }
+    ncApplying = true;
+    try{
+      // Lưu bản sao ghi chú cũ TRƯỚC khi sửa để luôn hoàn tác được (giữ 10 phút, kể cả khi tải lại trang).
+      saveNoteUndo({ at: Date.now(), items: picked.map(it => ({ monthKey: it.monthKey, id: it.id, before: it.before, after: it.after })) });
+      const r = applyNoteChanges(picked.map(it => ({ monthKey: it.monthKey, id: it.id, note: it.after })));
+      closeNoteClean();
+      showVoiceToast(false, "Đã dọn ghi chú <b>" + r.n + "</b> khoản" + (SHEET_SYNC_URL ? ". Đang gửi lên Google Sheet…" : ""), () => undoNoteClean());
+    }catch(err){
+      showErrorBanner("note-clean: " + err.message);
+    }finally{ ncApplying = false; }
+  }
+  function undoNoteClean(){
+    const s = loadNoteUndo();
+    if(!s){ showNotice("Không còn lần dọn nào để hoàn tác (chỉ giữ 10 phút)."); refreshNoteUndoUI(); return; }
+    const r = applyNoteChanges(s.items.map(it => ({ monthKey: it.monthKey, id: it.id, note: it.before, after: it.after })), "after");
+    clearNoteUndo();
+    refreshNoteUndoUI();
+    showNotice("Đã khôi phục ghi chú cũ cho " + r.n + " khoản" + (r.skipped ? ". " + r.skipped + " khoản giữ nguyên vì bạn đã sửa lại ghi chú (hoặc khoản không còn)." : "."));
+  }
+
+  document.getElementById("noteCleanBtn").addEventListener("click", () => { closeMenuPanel(); openNoteClean(); });
+  document.getElementById("ncClose").addEventListener("click", closeNoteClean);
+  document.getElementById("ncCancel").addEventListener("click", closeNoteClean);
+  ncOverlay.addEventListener("click", (e) => { if(e.target === ncOverlay) closeNoteClean(); });
+  ncPhrase.addEventListener("input", () => { clearTimeout(ncTimer); ncTimer = setTimeout(renderNoteCleanPlan, 150); });
+  ncScope.addEventListener("change", renderNoteCleanPlan);
+  document.getElementById("ncModePhrase").addEventListener("change", renderNoteCleanPlan);
+  ncModeAll.addEventListener("change", renderNoteCleanPlan);
+  ncList.addEventListener("change", (e) => {
+    const cb = e.target.closest("input[data-i]");
+    if(!cb) return;
+    const i = Number(cb.dataset.i);
+    if(cb.checked) ncChecked.add(i); else ncChecked.delete(i);
+    updateNoteCleanState();
+  });
+  ncToggleAll.addEventListener("click", () => {
+    ncChecked = ncChecked.size >= ncPlan.items.length ? new Set() : new Set(ncPlan.items.map((_, i) => i));
+    drawNoteCleanList();
+  });
+  ncConfirm.addEventListener("click", runNoteClean);
+  ncUndoBtn.addEventListener("click", () => {
+    const s = loadNoteUndo();
+    if(!s){ refreshNoteUndoUI(); return; }
+    openConfirm("Hoàn tác lần dọn ghi chú gần nhất?",
+      "Khôi phục ghi chú cũ cho " + s.items.length + " khoản. Khoản nào bạn đã sửa lại ghi chú sau lúc dọn sẽ được giữ nguyên.",
+      "Hoàn tác", false, () => { undoNoteClean(); closeNoteClean(); });
   });
 
   document.getElementById("syncNowBtn").addEventListener("click", () => {
