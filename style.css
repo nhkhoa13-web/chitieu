@@ -1851,8 +1851,7 @@ html[data-theme="light"] .balance-main::before{ background:radial-gradient(close
 
 
 /* ============ Dọn ghi chú hàng loạt ============ */
-.nc-input{ width:100%; padding:10px 12px; border-radius:11px; border:1px solid var(--border); background:var(--bg); color:var(--text-hi); font:inherit; font-size:14px; }
-.nc-input:focus{ outline:none; border-color:var(--chong); }
+.nc-input{ width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--border); color:var(--text-hi); font:inherit; font-size:14px; } /* nền, bo góc, viền sáng khi chọn: dùng chung kiểu input toàn app */
 .nc-radio{ display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.45; color:var(--text-mid); cursor:pointer; padding:4px 0; }
 .nc-radio input{ margin-top:2px; accent-color:var(--chong); flex-shrink:0; }
 .nc-summary{ font-size:12.5px; line-height:1.5; color:var(--text-mid); padding:9px 12px; border-radius:11px; background:var(--bg); border:1px solid var(--border2); }
@@ -1930,3 +1929,16 @@ html[data-perf="lite"] .note-clean-btn.has-search::after{ animation:none; box-sh
   .note-clean-btn:hover svg{ transform:none; }
   .note-clean-btn.has-search::after{ animation:none; }
 }
+
+
+/* ============ Bảng chọn "Phạm vi" (Dọn ghi chú): cùng kiểu bảng chọn danh mục/ngày ============ */
+.nc-scope-trigger{ font-size:14px; padding:10px 12px; border-color:var(--border); }
+.nc-scope-label{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nc-scope-picker .cat-panel{ min-width:0; max-width:100%; }
+.nc-scope-picker .cat-option{ gap:8px; }
+.nc-scope-opt-label{ flex:1; min-width:0; line-height:1.35; }
+.nc-scope-count{ flex-shrink:0; padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:600; font-variant-numeric:tabular-nums;
+  color:var(--text-muted); background:var(--surface3); border:1px solid var(--border2); white-space:nowrap; }
+.cat-option.active .nc-scope-count{ color:var(--chong-soft); background:rgba(var(--chong-rgb),0.16); border-color:rgba(var(--chong-rgb),0.4); }
+.cat-option.disabled{ opacity:.45; cursor:not-allowed; }
+.cat-option.disabled:hover{ background:transparent; }

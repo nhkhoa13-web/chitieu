@@ -1692,6 +1692,11 @@
     return { succeeded, failed };
   }
 
+  // closeAllPopovers phải gọi được từ MỌI nơi (kể cả openLogoutModal/openDevicesModal nằm ngoài khối khởi tạo bên dưới).
+  // Hàm thật được khai báo trong khối try{} nên chỉ nhìn thấy trong khối đó (file chạy "use strict"); ở đây là cầu nối ra ngoài.
+  let closeAllPopoversImpl = null;
+  function closeAllPopovers(except){ if(closeAllPopoversImpl) closeAllPopoversImpl(except); }
+
   // ---------- Modal / form ----------
   try{
   const modalOverlay = document.getElementById("modalOverlay");
@@ -4132,7 +4137,11 @@
   const ncOverlay = document.getElementById("noteCleanOverlay");
   const ncPhrase = document.getElementById("ncPhrase");
   const ncModeAll = document.getElementById("ncModeAll");
-  const ncScope = document.getElementById("ncScope");
+  const ncScope = document.getElementById("ncScope"); // <select> ẩn giữ giá trị (cùng kiểu với các bảng chọn khác của app)
+  const ncScopeTrigger = document.getElementById("ncScopeTrigger");
+  const ncScopePanel = document.getElementById("ncScopePanel");
+  const ncScopeList = document.getElementById("ncScopeList");
+  const ncScopeLabel = document.getElementById("ncScopeLabel");
   const ncSummary = document.getElementById("ncSummary");
   const ncListWrap = document.getElementById("ncListWrap");
   const ncList = document.getElementById("ncList");
@@ -4260,12 +4269,63 @@
     ncUndoBtn.textContent = "Hoàn tác lần dọn gần nhất: " + s.items.length + " khoản (còn " + mins + " phút)";
     ncUndoBtn.hidden = false;
   }
+  // ---- Bảng chọn "Phạm vi": cùng kiểu .cat-picker / .cat-panel / .cat-option như bảng chọn danh mục & ngày ----
+  function ncScopeCounts(){
+    return {
+      visible: entries.filter(ledgerFilterPredicate()).length,
+      month: entries.length,
+      all: Object.keys(monthsData).reduce((s, mk) => s + ((ncListFor(mk) || []).length), 0)
+    };
+  }
+  function ncScopeVisibleDisabled(){ return ncScope.querySelector('option[value="visible"]').disabled; }
+  function buildNcScopeList(){
+    const cnt = ncScopeCounts();
+    ncScopeList.innerHTML = Array.from(ncScope.options).map((o) => {
+      const dis = o.disabled;
+      return '<button type="button" class="cat-option' + (o.value === ncScope.value ? " active" : "") + (dis ? " disabled" : "") + '" role="option"' +
+        ' aria-selected="' + (o.value === ncScope.value ? "true" : "false") + '"' + (dis ? ' aria-disabled="true"' : "") + ' data-v="' + o.value + '">' +
+        '<span class="nc-scope-opt-label">' + escapeHtml(o.textContent) + '</span>' +
+        '<span class="nc-scope-count">' + (dis ? "chưa lọc" : cnt[o.value] + " khoản") + "</span></button>";
+    }).join("");
+  }
+  function setNcScope(v, silent){
+    ncScope.value = v;
+    const opt = ncScope.querySelector('option[value="' + v + '"]');
+    ncScopeLabel.textContent = opt ? opt.textContent : "";
+    buildNcScopeList();
+    if(!silent) ncScope.dispatchEvent(new Event("change"));
+  }
+  function closeNcScopePanel(){
+    ncScopePanel.classList.remove("show");
+    ncScopeTrigger.classList.remove("open");
+    ncScopeTrigger.setAttribute("aria-expanded", "false");
+  }
+  ncScopeTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if(typeof closeAllPopovers === "function") closeAllPopovers("ncScope");
+    const willOpen = !ncScopePanel.classList.contains("show");
+    if(willOpen) buildNcScopeList(); // số khoản luôn là số mới nhất
+    ncScopePanel.classList.toggle("show", willOpen);
+    ncScopeTrigger.classList.toggle("open", willOpen);
+    ncScopeTrigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+  });
+  ncScopeList.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const opt = e.target.closest(".cat-option");
+    if(!opt || opt.classList.contains("disabled")) return;
+    setNcScope(opt.dataset.v);
+    closeNcScopePanel();
+  });
+  document.addEventListener("click", (e) => { if(!e.target.closest("#ncScopePicker")) closeNcScopePanel(); });
+  ncScopeTrigger.addEventListener("keydown", (e) => { if(e.key === "Escape" && ncScopePanel.classList.contains("show")){ e.stopPropagation(); closeNcScopePanel(); } });
+
   function openNoteClean(){
     const filterActive = !!(ledgerFilterText || ledgerFilterCat || ledgerFilterDay);
     ncPhrase.value = ledgerFilterText.trim(); // chỉ là gợi ý từ ô tìm kiếm; sửa tuỳ ý. Ô tìm kiếm không bị thay đổi.
     document.getElementById("ncModePhrase").checked = true;
     ncScope.querySelector('option[value="visible"]').disabled = !filterActive;
-    ncScope.value = filterActive ? "visible" : "month";
+    closeNcScopePanel();
+    setNcScope(filterActive ? "visible" : "month", true);
     ncTypeInput.value = "";
     refreshNoteUndoUI();
     renderNoteCleanPlan();
@@ -4274,6 +4334,7 @@
     setTimeout(() => { try{ ncPhrase.focus(); }catch(e){} }, 60);
   }
   function closeNoteClean(){
+    closeNcScopePanel();
     ncOverlay.classList.remove("show");
     resumeParticleBg();
   }
@@ -4930,7 +4991,7 @@
   });
   // Chỉ cho mở MỘT bảng chọn/menu tại một thời điểm: mỗi nút mở bảng đều chặn sự kiện bấm nên bộ đóng ở trên
   // không chạy được; vì vậy mỗi nút gọi hàm này (truyền tên bảng của chính nó để giữ lại).
-  function closeAllPopovers(except){
+  function closePopoversNow(except){
     if(except !== "month" && except !== "ym") closeMonthPanel();
     if(except !== "menu") closeMenuPanel();
     if(except !== "day") closeDayPanel();
@@ -4938,7 +4999,9 @@
     if(except !== "ledgerDay") closeLedgerDayPanel();
     if(except !== "ledgerCat") closeLedgerCatPanel();
     if(except !== "ym") closeYmPanel();
+    if(except !== "ncScope" && typeof closeNcScopePanel === "function") closeNcScopePanel();
   }
+  closeAllPopoversImpl = closePopoversNow;
 
   document.getElementById("balanceSpotlight").addEventListener("click", () => {
     const btn = document.getElementById("balanceSpotlight");
@@ -6178,7 +6241,7 @@ initParticleNetwork();
   }
   navigator.serviceWorker.addEventListener("message", function(e){
     if(e.data && e.data.type === "version"){
-      versionText = "Phiên bản " + e.data.version;
+      versionText = "Phiên bản " + e.data.version + ".";
       showVersion(versionText);
     }
   });

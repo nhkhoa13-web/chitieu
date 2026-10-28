@@ -843,12 +843,21 @@
       </div>
 
       <div class="export-filter-group">
-        <label class="export-filter-label" for="ncScope">Phạm vi</label>
-        <select id="ncScope" class="nc-input">
-          <option value="visible">Các khoản đang hiển thị (theo bộ lọc)</option>
-          <option value="month">Cả tháng đang xem</option>
-          <option value="all">Tất cả các tháng đã tải trên máy</option>
-        </select>
+        <label class="export-filter-label" for="ncScopeTrigger">Phạm vi</label>
+        <div class="cat-picker nc-scope-picker" id="ncScopePicker">
+          <button type="button" class="day-trigger nc-scope-trigger" id="ncScopeTrigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="nc-scope-label" id="ncScopeLabel">Cả tháng đang xem</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <select id="ncScope" style="display:none">
+            <option value="visible">Các khoản đang hiển thị (theo bộ lọc)</option>
+            <option value="month">Cả tháng đang xem</option>
+            <option value="all">Tất cả các tháng đã tải trên máy</option>
+          </select>
+          <div class="cat-panel" id="ncScopePanel" role="listbox" aria-labelledby="ncScopeTrigger">
+            <div class="cat-list" id="ncScopeList"></div>
+          </div>
+        </div>
       </div>
 
       <div class="nc-summary" id="ncSummary"></div>
