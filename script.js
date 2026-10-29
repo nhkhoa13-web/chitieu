@@ -1709,9 +1709,24 @@
   const fNote = document.getElementById("fNote");
   const fCategoryHint = document.getElementById("fCategoryHint");
   const modalTitle = document.getElementById("modalTitle");
-  const submitBtn = document.getElementById("submitBtn");
   const submitBtnBottom = document.getElementById("submitBtnBottom");
-  const cancelModalBottom = document.getElementById("cancelModalBottom");
+  // Phần tử của bố cục form mới (ô tiền lớn, phím tắt, chip danh mục/ngày, gợi ý, "Thêm tiếp")
+  const amountHero = document.getElementById("amountHero");
+  const amountKeys = document.getElementById("amountKeys");
+  const catChipsEl = document.getElementById("catChips");
+  const catImpactEl = document.getElementById("catImpact");
+  const dateChipsEl = document.getElementById("dateChips");
+  const dateTodayBtn = document.getElementById("dateToday");
+  const dateYestBtn = document.getElementById("dateYesterday");
+  const nameSuggestEl = document.getElementById("nameSuggest");
+  const noteSuggestEl = document.getElementById("noteSuggest");
+  const keepToggle = document.getElementById("keepToggle");
+  const fKeepOpen = document.getElementById("fKeepOpen");
+  const entryAddedEl = document.getElementById("entryAdded");
+  const AMOUNT_BIG_THOUSANDS = 50000; // ≥ 50 triệu đồng thì nhắc kiểm tra đơn vị (nghìn)
+  let catTouched = false;      // người dùng đã tự chọn loại chi tiêu (đừng để gợi ý ghi đè)
+  let addedThisSession = 0;    // số khoản đã thêm trong lần mở form này (chế độ "Thêm tiếp")
+  let entryAddedTimer = null;
   let formSnapshot = null; // lưu lại trạng thái form lúc vừa mở, để phát hiện có thay đổi chưa lưu hay không
 
   // Tự động viết hoa chữ cái đầu tiên của "Tên khoản chi" khi gõ (giữ nguyên vị trí con trỏ).
@@ -1749,41 +1764,263 @@
   }
 
   // Ô "Số tiền" GIỮ NGUYÊN chữ bạn gõ (kể cả công thức như "10+20") — không tự thay bằng kết quả,
-  // để khi bấm "Sửa" lại, công thức gốc vẫn hiện ra chứ không chỉ hiện con số đã tính.
-  // Kết quả tính được chỉ hiện ở dòng gợi ý nhỏ bên dưới ô, và số đó mới là số thực sự được lưu.
+  // để khi bấm "Sửa" lại, công thức gốc vẫn hiện ra. Dòng bên dưới ô LUÔN cho biết số tiền thật sẽ được lưu ("= 35.000 ₫"),
+  // kể cả khi chỉ gõ 1 con số, để khỏi nhầm đơn vị nghìn đồng.
+  function setAmountPreview(text, level){
+    fAmountPreview.textContent = text;
+    fAmountPreview.className = "amount-preview" + (level ? " " + level : "");
+    amountHero.classList.toggle("err", level === "err");
+  }
   function updateAmountValidity(){
     const val = fAmount.value.trim();
-    if(!val){ fAmount.setCustomValidity(""); fAmountPreview.textContent = ""; return; }
+    if(!val){ fAmount.setCustomValidity(""); setAmountPreview("", ""); updateCategoryHint(); return; }
     const result = evalAmountExpr(val);
     if(result === null || isNaN(result) || result < 0){
       fAmount.setCustomValidity("Số tiền không hợp lệ — chỉ gõ số hoặc phép tính cộng/trừ/nhân/chia, vd. 15 hoặc 10+20");
-      fAmountPreview.textContent = isAmountFormula(val) ? "⚠️ Chưa tính được, kiểm tra lại phép tính" : "";
+      setAmountPreview(isAmountFormula(val) ? "Chưa tính được, kiểm tra lại phép tính" : "Chỉ gõ số hoặc phép tính, vd. 15 hoặc 10+20", "warn");
     }else{
       fAmount.setCustomValidity("");
-      fAmountPreview.textContent = isAmountFormula(val) ? ("= " + money(result)) : "";
+      const big = result >= AMOUNT_BIG_THOUSANDS;
+      setAmountPreview("= " + money(result) + (big ? " · số rất lớn, kiểm tra lại đơn vị (nghìn)" : ""), big ? "warn" : "");
     }
+    updateCategoryHint();
   }
   fAmount.addEventListener("input", updateAmountValidity);
   fAmount.addEventListener("blur", updateAmountValidity);
 
+  // Phím tắt dưới ô số tiền: cộng nhanh (+10/+20/+50/+100) và dấu phép tính. pointerdown bị chặn để KHÔNG làm mất focus ô nhập
+  // (bàn phím trên điện thoại không bị đóng lại mỗi lần bấm).
+  amountKeys.addEventListener("pointerdown", (e) => { if(e.target.closest(".akey")) e.preventDefault(); });
+  amountKeys.addEventListener("mousedown", (e) => { if(e.target.closest(".akey")) e.preventDefault(); });
+  amountKeys.addEventListener("click", (e) => {
+    const b = e.target.closest(".akey");
+    if(!b) return;
+    const focused = document.activeElement === fAmount;
+    const v = fAmount.value.trim();
+    if(b.dataset.add){
+      const n = b.dataset.add;
+      fAmount.value = !v ? n : (/[+\-*/(]$/.test(v) ? v + n : v + "+" + n);
+    }else if(b.dataset.ins){
+      const s = fAmount.selectionStart, en = fAmount.selectionEnd;
+      if(focused && s != null){
+        const cur = fAmount.value;
+        fAmount.value = cur.slice(0, s) + b.dataset.ins + cur.slice(en);
+        try{ fAmount.setSelectionRange(s + 1, s + 1); }catch(err){}
+      }else fAmount.value = fAmount.value + b.dataset.ins;
+    }else if(b.dataset.act === "clear"){
+      fAmount.value = "";
+    }
+    try{ fAmount.focus({ preventScroll: true }); }catch(err){}
+    if(!focused){ try{ const l = fAmount.value.length; fAmount.setSelectionRange(l, l); }catch(err){} }
+    updateAmountValidity();
+  });
+
   fCategory.innerHTML = CATS.map(c => '<option value="' + c.id + '">' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</option>').join("");
   fCategory.addEventListener("change", updateCategoryHint);
-  function updateCategoryHint(){
-    fCategoryHint.textContent = catById[fCategory.value].sub;
-    setCatTrigger(fCategory.value);
-  }
-  function setCatTrigger(id){
-    const c = catById[id];
-    document.getElementById("catTriggerLabel").textContent = c.label.replace(/\s*·\s*chia\s*\d+/i, "");
-    document.getElementById("catTriggerDot").style.background = c.color;
-  }
-  function buildCatList(selectedId){
-    document.getElementById("catList").innerHTML = CATS.map(c =>
-      '<button type="button" class="cat-option' + (c.id === selectedId ? " active" : "") + '" data-cat="' + c.id + '">' +
-        '<span class="cat-dot" style="background:' + c.color + '"></span>' +
-        '<span>' + escapeHtml(c.label.replace(/\s*·\s*chia\s*\d+/i, "")) + '</span>' +
-      '</button>'
+
+  // Loại chi tiêu hiển thị dạng chip, nhóm theo người, thấy đủ 7 lựa chọn mà không cần mở danh sách.
+  const CAT_ROWS = [
+    { label: "Riêng", cls: "",   items: [["ca_nhan", "Cá nhân", ""]] },
+    { label: "Chồng", cls: "ck", items: [["ck_tinh", "Tính", "÷2"], ["ck_thieu", "Thiếu", ""], ["ck_chung", "Chung", "÷3"]] },
+    { label: "Vợ",    cls: "vk", items: [["vk_tinh", "Tính", "÷2"], ["vk_thieu", "Thiếu", ""], ["vk_chung", "Chung", "÷3"]] }
+  ];
+  function buildCatChips(){
+    catChipsEl.innerHTML = CAT_ROWS.map(r =>
+      '<div class="cat-row"><span class="cat-row-label ' + r.cls + '">' + r.label + '</span><div class="cat-row-pills">' +
+      r.items.map(it => {
+        const c = catById[it[0]];
+        return '<button type="button" class="cat-pill" role="radio" aria-checked="false" data-cat="' + it[0] + '" title="' + escapeHtml(c.label + " — " + c.sub) + '" style="--pill-c:' + c.color + '">' +
+          '<span class="cat-dot" style="background:' + c.color + '"></span><span>' + it[1] + '</span>' + (it[2] ? '<span class="cat-pill-tag">' + it[2] + '</span>' : '') + '</button>';
+      }).join("") + '</div></div>'
     ).join("");
+  }
+  function syncCatChips(){
+    catChipsEl.querySelectorAll(".cat-pill").forEach(b => {
+      const on = b.dataset.cat === fCategory.value;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    });
+  }
+  // Khoản này làm số dư Chồng/Vợ thay đổi thế nào (đúng công thức computeBalance: dương = Vợ nợ Chồng).
+  function categoryImpact(id, a){
+    if(!(a > 0)) return "";
+    switch(id){
+      case "ck_tinh":  return "Vợ nợ Chồng +" + money(a / 2);
+      case "vk_tinh":  return "Chồng nợ Vợ +" + money(a / 2);
+      case "ck_thieu": return "Chồng nợ Vợ +" + money(a);
+      case "vk_thieu": return "Vợ nợ Chồng +" + money(a);
+      case "ck_chung": return "Vợ nợ Chồng +" + money(a / 3);
+      case "vk_chung": return "Chồng nợ Vợ +" + money(a / 3);
+      default:         return "Không ảnh hưởng số dư";
+    }
+  }
+  function updateCategoryHint(){
+    const c = catById[fCategory.value] || catById.ca_nhan;
+    fCategoryHint.textContent = c.sub;
+    const v = evalAmountExpr(fAmount.value);
+    catImpactEl.textContent = (v === null || isNaN(v) || v <= 0) ? "" : categoryImpact(c.id, v);
+    syncCatChips();
+  }
+  catChipsEl.addEventListener("click", (e) => {
+    const b = e.target.closest(".cat-pill");
+    if(!b) return;
+    catTouched = true;
+    fCategory.value = b.dataset.cat;
+    updateCategoryHint();
+  });
+  buildCatChips();
+
+  // Ngày: chip "Hôm nay" / "Hôm qua" (chỉ khi đang xem đúng tháng hiện tại) + chọn ngày bằng lịch.
+  const pad2 = (n) => String(n).padStart(2, "0");
+  function realToday(){ const d = new Date(); return { key: d.getFullYear() + "-" + pad2(d.getMonth() + 1), day: d.getDate() }; }
+  function syncDateChips(){
+    const t = realToday(), inMonth = currentMonthKey === t.key;
+    dateTodayBtn.hidden = !inMonth;
+    dateYestBtn.hidden = !inMonth || t.day <= 1;
+    const sel = Number(fDay.value);
+    const todayOn = inMonth && sel === t.day, yestOn = inMonth && t.day > 1 && sel === t.day - 1;
+    dateTodayBtn.classList.toggle("active", todayOn);
+    dateYestBtn.classList.toggle("active", yestOn);
+    dateChipsEl.classList.toggle("no-quick", dateTodayBtn.hidden && dateYestBtn.hidden);
+    document.getElementById("dayTrigger").classList.toggle("custom", !(todayOn || yestOn));
+  }
+  function setFormDay(d){
+    fDay.value = String(d);
+    document.getElementById("dayTriggerLabel").textContent = "Ngày " + d;
+    buildDayCalendar(currentMonthKey, Number(d));
+    syncDateChips();
+  }
+  dateTodayBtn.addEventListener("click", () => setFormDay(realToday().day));
+  dateYestBtn.addEventListener("click", () => setFormDay(realToday().day - 1));
+
+  // Gợi ý tên / ghi chú hay dùng, lấy từ các khoản đã có trên máy (nhiều lần nhất trước, cùng số lần thì gần đây trước).
+  let entryHistory = null;
+  function getEntryHistory(){
+    if(entryHistory) return entryHistory;
+    const names = new Map(), notes = new Map();
+    Object.keys(monthsData).sort().forEach((mk) => {
+      const list = mk === currentMonthKey ? entries : monthsData[mk];
+      (list || []).forEach((e) => {
+        const ord = Number(mk.replace("-", "")) * 100 + (Number(e.day) || 0);
+        const nm = String(e.name || "").trim();
+        if(nm){
+          const k = stripDiacritics(nm);
+          if(k !== "khoan chi"){
+            const cur = names.get(k);
+            if(!cur) names.set(k, { name: nm, key: k, count: 1, ord, last: e });
+            else{ cur.count++; if(ord >= cur.ord){ cur.ord = ord; cur.name = nm; cur.last = e; } }
+          }
+        }
+        const nt = String(e.note || "").trim();
+        if(nt && nt.length <= 40){
+          const k2 = stripDiacritics(nt);
+          const c2 = notes.get(k2);
+          if(!c2) notes.set(k2, { note: nt, key: k2, count: 1, ord });
+          else{ c2.count++; if(ord >= c2.ord){ c2.ord = ord; c2.note = nt; } }
+        }
+      });
+    });
+    const byScore = (a, b) => (b.count - a.count) || (b.ord - a.ord);
+    entryHistory = { names: Array.from(names.values()).sort(byScore), notes: Array.from(notes.values()).sort(byScore) };
+    return entryHistory;
+  }
+  const suggestAllowed = () => !editingId && !dupSourceId && modalOverlay.classList.contains("show");
+  let nameSuggestList = [], noteSuggestList = [];
+  function renderNameSuggest(){
+    if(!suggestAllowed()){ nameSuggestEl.hidden = true; return; }
+    const typed = stripDiacritics(fName.value.trim());
+    const hist = getEntryHistory().names;
+    nameSuggestList = (typed ? hist.filter(h => h.key.includes(typed) && h.key !== typed) : hist).slice(0, 6);
+    nameSuggestEl.innerHTML = nameSuggestList.map((h, i) => '<button type="button" class="suggest-chip" data-i="' + i + '">' + escapeHtml(h.name) + '</button>').join("");
+    nameSuggestEl.hidden = nameSuggestList.length === 0;
+  }
+  function renderNoteSuggest(){
+    if(!suggestAllowed()){ noteSuggestEl.hidden = true; return; }
+    const typed = stripDiacritics(fNote.value.trim());
+    const hist = getEntryHistory().notes;
+    noteSuggestList = (typed ? hist.filter(h => h.key.includes(typed) && h.key !== typed) : hist).slice(0, 5);
+    noteSuggestEl.innerHTML = noteSuggestList.map((h, i) => '<button type="button" class="suggest-chip" data-i="' + i + '">' + escapeHtml(h.note) + '</button>').join("");
+    noteSuggestEl.hidden = noteSuggestList.length === 0;
+  }
+  [nameSuggestEl, noteSuggestEl].forEach((el) => el.addEventListener("pointerdown", (e) => { if(e.target.closest(".suggest-chip")) e.preventDefault(); }));
+  nameSuggestEl.addEventListener("click", (e) => {
+    const b = e.target.closest(".suggest-chip");
+    if(!b) return;
+    const h = nameSuggestList[Number(b.dataset.i)];
+    if(!h) return;
+    fName.value = h.name;
+    const last = h.last || {};
+    let filled = false;
+    if(!fAmount.value.trim() && Number(last.amount) > 0){ fAmount.value = String(Math.round(Number(last.amount) * 1000) / 1000); filled = true; }
+    if(!catTouched && last.category && catById[last.category]) fCategory.value = last.category;
+    updateAmountValidity(); // cũng cập nhật chip danh mục + dòng ảnh hưởng số dư
+    renderNameSuggest();
+    if(filled || !fAmount.value.trim()){ try{ fAmount.focus(); fAmount.select(); }catch(err){} }
+  });
+  noteSuggestEl.addEventListener("click", (e) => {
+    const b = e.target.closest(".suggest-chip");
+    if(!b) return;
+    const h = noteSuggestList[Number(b.dataset.i)];
+    if(!h) return;
+    fNote.value = h.note;
+    renderNoteSuggest();
+  });
+  fName.addEventListener("input", renderNameSuggest);
+  fName.addEventListener("focus", renderNameSuggest);
+  fNote.addEventListener("input", renderNoteSuggest);
+  fNote.addEventListener("focus", renderNoteSuggest);
+
+  // Phím Enter đi tiếp: Số tiền -> Tên -> Ghi chú -> Thêm.
+  fAmount.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); fName.focus(); } });
+  fName.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); fNote.focus(); } });
+  fNote.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); saveEntryFromForm(); } });
+  // Ô đang gõ tự cuộn vào vùng nhìn thấy (bàn phím ảo có thể che mất).
+  entryForm.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if(!t || !t.matches || !t.matches("input")) return;
+    setTimeout(() => { try{ t.scrollIntoView({ block: "nearest", behavior: "smooth" }); }catch(err){} }, 300);
+  });
+  // Bàn phím ảo: dùng visualViewport để bảng luôn nằm trên bàn phím (iOS/Android không tự co khung cố định).
+  function syncVisualViewport(){
+    const vv = window.visualViewport;
+    if(!vv || !modalOverlay.classList.contains("show")) return;
+    modalOverlay.classList.add("vv-active");
+    modalOverlay.style.setProperty("--vv-h", Math.round(vv.height) + "px");
+    modalOverlay.style.setProperty("--vv-top", Math.round(vv.offsetTop) + "px");
+  }
+  function clearVisualViewport(){
+    modalOverlay.classList.remove("vv-active");
+    modalOverlay.style.removeProperty("--vv-h");
+    modalOverlay.style.removeProperty("--vv-top");
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", syncVisualViewport);
+    window.visualViewport.addEventListener("scroll", syncVisualViewport);
+  }
+
+  // "Thêm tiếp": thêm xong KHÔNG đóng form, chỉ xoá số tiền / tên / ghi chú (giữ ngày và loại) để nhập khoản kế tiếp.
+  const KEEP_OPEN_KEY = "so_chi_tieu:keep_open";
+  const loadKeepOpen = () => { try{ return localStorage.getItem(KEEP_OPEN_KEY) === "1"; }catch(e){ return false; } };
+  fKeepOpen.addEventListener("change", () => { try{ localStorage.setItem(KEEP_OPEN_KEY, fKeepOpen.checked ? "1" : "0"); }catch(e){} });
+  function showEntryAdded(entry){
+    addedThisSession++;
+    entryAddedEl.textContent = "✓ Đã thêm “" + entry.name + "” · " + money(entry.amount) + (addedThisSession > 1 ? " · " + addedThisSession + " khoản trong lần này" : "");
+    entryAddedEl.hidden = false;
+    entryAddedEl.style.animation = "none"; void entryAddedEl.offsetWidth; entryAddedEl.style.animation = "";
+    clearTimeout(entryAddedTimer);
+    entryAddedTimer = setTimeout(() => { entryAddedEl.hidden = true; }, 3500);
+  }
+  function resetFormForNext(entry){
+    fName.value = ""; fAmount.value = ""; fNote.value = "";
+    fAmount.setCustomValidity("");
+    entryHistory = null; // vừa có khoản mới -> gợi ý tính lại
+    catTouched = false;
+    updateAmountValidity();
+    formSnapshot = { day: fDay.value, name: "", amount: "", category: fCategory.value, note: "" };
+    showEntryAdded(entry);
+    renderNameSuggest(); renderNoteSuggest();
+    try{ fAmount.focus({ preventScroll: true }); }catch(err){}
+    if(navigator.vibrate) navigator.vibrate(10);
   }
 
   function populateDayOptions(selectedDay){
@@ -1795,6 +2032,7 @@
     fDay.value = String(day);
     document.getElementById("dayTriggerLabel").textContent = "Ngày " + day;
     buildDayCalendar(currentMonthKey, day);
+    syncDateChips();
   }
   let modalOpenedAt = 0; // mốc mở popup: chặn cú "click ma" ngay sau khi nhấn giữ (ngón tay nhấc lên đúng chỗ lớp phủ)
   let dupSourceId = null; // khác null khi popup đang mở ở chế độ "Nhân bản khoản chi" (id khoản gốc)
@@ -1810,7 +2048,6 @@
     modalOpenedAt = Date.now();
     editingId = entry ? entry.id : null;
     modalTitle.textContent = customTitle || (mode === "edit" ? "Sửa khoản chi" : "Thêm khoản chi");
-    submitBtn.setAttribute("aria-label", customSubmitLabel || (mode === "edit" ? "Lưu" : "Thêm"));
     submitBtnBottom.textContent = customSubmitLabel || (mode === "edit" ? "Lưu thay đổi" : "Thêm vào sổ");
     populateDayOptions(entry ? entry.day : null);
     fName.value = entry ? entry.name : "";
@@ -1820,12 +2057,22 @@
     fCategory.value = entry ? entry.category : "ca_nhan";
     fNote.value = entry ? (entry.note || "") : "";
     updateCategoryHint();
-    buildCatList(fCategory.value);
     closeAllPopovers();
     modalOverlay.classList.add("show");
     pauseParticleBg();
+    // Trạng thái của bố cục mới
+    catTouched = !!entry;            // mở để sửa/nhân bản/xem lại: coi như loại đã được chọn
+    addedThisSession = 0;
+    entryAddedEl.hidden = true;
+    entryHistory = null;
+    const plainAdd = !entry;         // chỉ lúc "Thêm khoản chi" thường mới có "Thêm tiếp" và tự đặt con trỏ vào Số tiền
+    keepToggle.hidden = !plainAdd;
+    fKeepOpen.checked = plainAdd && loadKeepOpen();
+    renderNameSuggest(); renderNoteSuggest();
+    syncVisualViewport();
     // Chụp lại trạng thái form ngay sau khi mở, để biết sau này người dùng có gõ/đổi gì hay chưa.
     formSnapshot = { day: fDay.value, name: fName.value, amount: fAmount.value, category: fCategory.value, note: fNote.value };
+    if(plainAdd){ try{ fAmount.focus({ preventScroll: true }); }catch(err){} }
   }
   function hasUnsavedFormChanges(){
     if(!formSnapshot) return false;
@@ -1855,6 +2102,9 @@
     editingId = null;
     formSnapshot = null;
     resetDupModalState();
+    clearVisualViewport();
+    clearTimeout(entryAddedTimer);
+    entryAddedEl.hidden = true;
     mergeSecondaryIds = []; // đóng popup (kể cả huỷ) -> luôn bỏ cờ "đang chờ gộp", tránh gộp nhầm ở lần Sửa kế tiếp
     entryForm.reset();
     closeDayPanel();
@@ -1865,7 +2115,6 @@
   document.getElementById("addBtn").addEventListener("click", () => openModal("add", null));
   document.getElementById("fabAddBtn").addEventListener("click", () => openModal("add", null));
   document.getElementById("cancelModal").addEventListener("click", attemptCloseModal);
-  cancelModalBottom.addEventListener("click", attemptCloseModal);
   modalOverlay.addEventListener("click", (e) => { if(e.target === modalOverlay && Date.now() - modalOpenedAt > 450) attemptCloseModal(); });
 
   // ---------- Confirm dialog helper ----------
@@ -2035,7 +2284,6 @@
   let isSubmittingEntry = false;
   function setEntrySubmitDisabled(disabled){
     isSubmittingEntry = disabled;
-    submitBtn.disabled = disabled;
     submitBtnBottom.disabled = disabled;
   }
   function saveEntryFromForm(){
@@ -2043,7 +2291,14 @@
     setEntrySubmitDisabled(true);
     try{
       updateAmountValidity();
-      if(typeof entryForm.reportValidity === "function" && !entryForm.reportValidity()) return;
+      const rawChk = fAmount.value.trim();
+      const chk = rawChk ? evalAmountExpr(rawChk) : NaN;
+      if(!rawChk || chk === null || isNaN(chk) || chk < 0){
+        setAmountPreview(rawChk ? "Số tiền chưa đúng — chỉ gõ số hoặc phép tính, vd. 15 hoặc 10+20" : "Nhập số tiền để thêm khoản chi", "err");
+        amountHero.classList.remove("shake"); void amountHero.offsetWidth; amountHero.classList.add("shake");
+        try{ fAmount.focus(); }catch(err){}
+        return;
+      }
       const day = Math.max(1, Math.min(daysInMonthKey(currentMonthKey), Number(fDay.value) || 1));
       const rawAmountInput = fAmount.value.trim();
       const evaluated = evalAmountExpr(rawAmountInput);
@@ -2086,9 +2341,10 @@
       }else{
         const newEntry = { id: genEntryId(), day, name, amount, amountFormula, category, note, updatedAt: Date.now() };
         const wasDuplicate = !!dupSourceId; // phải đọc TRƯỚC closeModal() vì closeModal() xoá cờ này
+        const keepOpenNow = !keepToggle.hidden && fKeepOpen.checked && !wasDuplicate;
         entries.push(newEntry);
         commit();
-        closeModal();
+        if(keepOpenNow) resetFormForNext(newEntry); else closeModal();
         render();
         queueSync("addEntry", newEntry);
         if(wasDuplicate) playDuplicateLanded(newEntry.id);
@@ -2104,10 +2360,6 @@
   }
 
   entryForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    saveEntryFromForm();
-  });
-  submitBtn.addEventListener("click", (e) => {
     e.preventDefault();
     saveEntryFromForm();
   });
@@ -2634,6 +2886,8 @@
       dupFromEl.hidden = false;
     }
     entryForm.classList.add("dup-open");
+    keepToggle.hidden = true;
+    renderNameSuggest(); renderNoteSuggest();
   }
 
   // ---------- Hiệu ứng nhân bản ----------
@@ -4532,35 +4786,13 @@
     const cell = e.target.closest(".day-cell");
     if(!cell || cell.classList.contains("empty")) return;
     const d = cell.dataset.day;
-    fDay.value = d;
-    document.getElementById("dayTriggerLabel").textContent = "Ngày " + d;
-    buildDayCalendar(currentMonthKey, Number(d));
+    setFormDay(d);
     closeDayPanel();
   });
 
-  // ---------- Category picker wiring ----------
-  const catTriggerBtn = document.getElementById("catTrigger");
-  const catPanelEl = document.getElementById("catPanel");
-  function closeCatPanel(){
-    catPanelEl.classList.remove("show");
-    catTriggerBtn.classList.remove("open");
-  }
-  catTriggerBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeAllPopovers("cat");
-    catPanelEl.classList.toggle("show");
-    catTriggerBtn.classList.toggle("open");
-  });
-  document.getElementById("catList").addEventListener("click", (e) => {
-    e.stopPropagation();
-    const opt = e.target.closest(".cat-option");
-    if(!opt) return;
-    const id = opt.dataset.cat;
-    fCategory.value = id;
-    updateCategoryHint();
-    buildCatList(id);
-    closeCatPanel();
-  });
+  // ---------- Category picker ----------
+  // Loại chi tiêu giờ là các chip (xem buildCatChips) nên không còn bảng thả xuống; giữ hàm rỗng cho các chỗ đóng-bảng dùng chung.
+  function closeCatPanel(){}
 
   // ---------- Month switcher wiring ----------
   const monthTrigger = document.getElementById("monthTrigger");

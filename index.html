@@ -488,74 +488,97 @@
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
-    <form class="modal" id="entryForm">
+    <form class="modal modal-entry" id="entryForm" novalidate>
       <div class="modal-head">
         <h3 class="modal-title" id="modalTitle">Thêm khoản chi</h3>
-        <div class="modal-head-actions">
-          <button type="button" class="modal-head-icon-btn cancel" id="cancelModal" aria-label="Huỷ">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </button>
-          <button type="button" class="modal-head-icon-btn submit" id="submitBtn" aria-label="Thêm">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M5 12.5 10 17.5 20 6.5"/></svg>
-          </button>
-        </div>
+        <button type="button" class="modal-head-icon-btn cancel" id="cancelModal" aria-label="Đóng">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
       <div class="dup-from" id="dupFrom" hidden>
         <span class="dup-from-ic" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="3"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></span>
         <span class="dup-from-txt" id="dupFromTxt"></span>
       </div>
-      <div class="field-row">
-        <label class="field field-day">
-          <span class="field-label">Ngày <span class="field-required">*</span></span>
+
+      <div class="form-sec amount-block" style="--i:1">
+        <div class="amount-hero" id="amountHero">
+          <div class="amount-hero-top">
+            <label class="field-label" for="fAmount">Số tiền <span class="field-required">*</span></label>
+            <span class="amount-unit">nghìn ₫</span>
+          </div>
+          <input type="text" id="fAmount" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="0" aria-describedby="fAmountPreview" />
+          <div class="amount-preview" id="fAmountPreview" aria-live="polite"></div>
+        </div>
+        <div class="amount-keys" id="amountKeys" role="group" aria-label="Phím tắt số tiền">
+          <button type="button" class="akey add" data-add="10">+10</button>
+          <button type="button" class="akey add" data-add="20">+20</button>
+          <button type="button" class="akey add" data-add="50">+50</button>
+          <button type="button" class="akey add" data-add="100">+100</button>
+          <span class="akey-sep" aria-hidden="true"></span>
+          <button type="button" class="akey op" data-ins="+" aria-label="Cộng">+</button>
+          <button type="button" class="akey op" data-ins="-" aria-label="Trừ">−</button>
+          <button type="button" class="akey op" data-ins="*" aria-label="Nhân">×</button>
+          <button type="button" class="akey op" data-ins="/" aria-label="Chia">÷</button>
+          <button type="button" class="akey op" data-ins="(" aria-label="Mở ngoặc">(</button>
+          <button type="button" class="akey op" data-ins=")" aria-label="Đóng ngoặc">)</button>
+          <button type="button" class="akey clr" data-act="clear" aria-label="Xoá số tiền">Xoá</button>
+        </div>
+      </div>
+
+      <div class="form-sec" style="--i:2">
+        <label class="field">
+          <span class="field-label">Tên khoản chi</span>
+          <input type="text" id="fName" placeholder="vd. Cơm + nước" autocapitalize="sentences" autocomplete="off" enterkeyhint="next" />
+        </label>
+        <div class="suggest-row" id="nameSuggest" hidden></div>
+      </div>
+
+      <div class="form-sec" style="--i:3">
+        <span class="field-label">Loại chi tiêu</span>
+        <div class="cat-chips" id="catChips" role="radiogroup" aria-label="Loại chi tiêu"></div>
+        <select id="fCategory" style="display:none"></select>
+        <div class="cat-hint">
+          <span class="select-hint" id="fCategoryHint"></span>
+          <span class="cat-impact" id="catImpact"></span>
+        </div>
+      </div>
+
+      <div class="form-sec" style="--i:4">
+        <span class="field-label">Ngày</span>
+        <div class="date-chips" id="dateChips">
+          <button type="button" class="date-chip" id="dateToday">Hôm nay</button>
+          <button type="button" class="date-chip" id="dateYesterday">Hôm qua</button>
           <div class="day-picker" id="dayPicker">
-            <button type="button" class="day-trigger" id="dayTrigger">
+            <button type="button" class="day-trigger" id="dayTrigger" aria-haspopup="dialog">
               <span id="dayTriggerLabel">Ngày 1</span>
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
             </button>
-            <select id="fDay" required style="display:none"></select>
-            <div class="day-panel" id="dayPanel">
+            <select id="fDay" style="display:none"></select>
+            <div class="day-panel day-panel-right" id="dayPanel">
               <div class="day-panel-title" id="dayPanelTitle"></div>
               <div class="day-grid-weekdays"><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span></div>
               <div class="day-grid" id="dayGrid"></div>
             </div>
           </div>
-        </label>
-        <label class="field">
-          <span class="field-label">Loại chi tiêu <span class="field-required">*</span></span>
-          <div class="cat-picker" id="catPicker">
-            <button type="button" class="day-trigger" id="catTrigger">
-              <span class="cat-trigger-label">
-                <span class="cat-dot" id="catTriggerDot"></span>
-                <span id="catTriggerLabel">Cá nhân</span>
-              </span>
-              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <select id="fCategory" style="display:none"></select>
-            <div class="cat-panel day-panel-right" id="catPanel">
-              <div class="cat-list" id="catList"></div>
-            </div>
-          </div>
-          <span class="select-hint" id="fCategoryHint"></span>
-        </label>
+        </div>
       </div>
-      <div class="field-row">
+
+      <div class="form-sec" style="--i:5">
         <label class="field">
-          <span class="field-label">Tên khoản chi <span class="field-required">*</span></span>
-          <input type="text" id="fName" placeholder="vd. Cơm + nước" autocapitalize="sentences" required />
+          <span class="field-label">Ghi chú <em class="opt">(tuỳ chọn)</em></span>
+          <input type="text" id="fNote" placeholder="vd. mua ở chợ gần nhà" autocapitalize="sentences" autocomplete="off" enterkeyhint="done" />
         </label>
-        <label class="field field-amount">
-          <span class="field-label">Số tiền (nghìn) <span class="field-required">*</span></span>
-          <input type="text" autocomplete="off" id="fAmount" placeholder="vd. 10 hoặc 10+20" required />
-          <span class="select-hint" id="fAmountPreview"></span>
-        </label>
+        <div class="suggest-row" id="noteSuggest" hidden></div>
       </div>
-      <label class="field">
-        Ghi chú
-        <input type="text" id="fNote" placeholder="vd. mua ở chợ gần nhà" autocapitalize="sentences" />
-      </label>
-      <div class="modal-actions">
-        <button type="button" class="btn-ghost" id="cancelModalBottom">Huỷ</button>
+
+      <div class="entry-added" id="entryAdded" hidden role="status"></div>
+      <div class="modal-actions entry-actions" style="--i:6">
         <button type="button" class="btn-primary" id="submitBtnBottom">Thêm vào sổ</button>
+        <label class="keep-toggle" id="keepToggle" title="Giữ form mở để nhập khoản tiếp theo">
+          <input type="checkbox" id="fKeepOpen" />
+          <span class="keep-switch" aria-hidden="true"></span>
+          <span class="keep-label">Thêm tiếp</span>
+        </label>
       </div>
     </form>
   </div>
