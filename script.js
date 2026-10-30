@@ -220,6 +220,14 @@
     try{ localStorage.setItem(PERF_KEY, getPerfLite() ? "full" : "lite"); }catch(err){ /* ignore */ }
     applyPerfMode();
   });
+  // Quỹ đạo của thẻ số dư cũng vậy: cuộn khỏi màn hình thì dừng chuyển động.
+  (function(){
+    const orb = document.querySelector(".orb");
+    if(!orb || !("IntersectionObserver" in window)) return;
+    new IntersectionObserver((list) => {
+      list.forEach((en) => orb.classList.toggle("offscreen", !en.isIntersecting));
+    }).observe(orb);
+  })();
   // Cán cân cuộn khỏi màn hình thì dừng các animation của nó (không ai nhìn thấy nên vẽ cũng vô ích).
   (function(){
     const box = document.querySelector(".scale-box");
@@ -1136,12 +1144,12 @@
   function fitHeroAmount(){
     const num = document.getElementById("balanceNumber");
     const row = num && num.parentElement;
-    const flow = row && row.querySelector(".balance-flow");
-    if(!num || !row || !flow || !num.dataset.final) return;
+    const flow = row && row.querySelector(".balance-flow"); // thiết kế "quỹ đạo" không còn sơ đồ này (giữ cho tương thích)
+    if(!num || !row || !num.dataset.final) return;
     num.style.fontSize = "";                                  // về cỡ tối đa theo CSS
     const maxPx = parseFloat(getComputedStyle(num).fontSize) || 36;
     const gap = parseFloat(getComputedStyle(row).columnGap) || 12;
-    const avail = row.clientWidth - flow.offsetWidth - gap - 4;
+    const avail = row.clientWidth - (flow ? flow.offsetWidth + gap : 0) - 4;
     if(avail <= 40) return;
     const probe = num.cloneNode(false);
     probe.className = "balance-number";
@@ -1153,7 +1161,7 @@
     row.removeChild(probe);
     if(!w100) return;
     const fit = Math.floor((avail / w100) * 100 * 2) / 2;
-    num.style.fontSize = Math.max(22, Math.min(maxPx, fit)) + "px";
+    num.style.fontSize = Math.max(14, Math.min(maxPx, fit)) + "px";
   }
   (function watchHeroAmount(){
     const row = document.querySelector(".balance-main");
@@ -1172,6 +1180,13 @@
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(refit); // font tải xong chữ số đổi độ rộng -> tính lại
   })();
 
+  // Nút thẻ số dư là 1 <button> bọc cả số tiền: aria-label phải nói rõ số tiền + việc bấm sẽ làm gì (đọc màn hình).
+  function refreshBalanceAria(){
+    const spot = document.getElementById("balanceSpotlight");
+    if(!spot) return;
+    const open = spot.classList.contains("open");
+    spot.setAttribute("aria-label", (spot.dataset.base || "Số dư") + ". " + (open ? "Bấm để thu gọn chi tiết" : "Bấm để xem chi tiết cách tính"));
+  }
   function renderHero(totals, balance, grandTotal){
     const ownerLabel = document.getElementById("ownerLabel");
     const balNum = document.getElementById("balanceNumber");
@@ -1186,6 +1201,8 @@
     ownerLabel.textContent = isZero ? "Đã cân bằng" : (balance.net > 0 ? "Vợ đang nợ Chồng" : "Chồng đang nợ Vợ");
     const balTarget = isZero ? 0 : Math.abs(balance.net);
     const balChanged = Math.abs(Number(balNum.dataset.animVal || 0) - balTarget) >= 0.001;
+    const spotEl = document.getElementById("balanceSpotlight");
+    if(spotEl){ spotEl.dataset.base = ownerLabel.textContent + (isZero ? "" : " " + money(balTarget)); refreshBalanceAria(); }
     animateValue(balNum, balTarget, money, setHeroAmount);
     balNum.dataset.final = money(balTarget);
     balNum.className = "balance-number " + dir;
@@ -1262,6 +1279,36 @@
     setChip("chipHalf", balance.half);
     setChip("chipDebt", balance.debt);
     setChip("chipThird", balance.third);
+    // Quỹ đạo: người NHẬN ở tâm, người TRẢ là vệ tinh; 3 chấm quay quanh có kích cỡ theo tỉ trọng từng khoản.
+    (function(){
+      const core = document.getElementById("orbCoreT"), sat = document.getElementById("orbSatT");
+      if(core) core.textContent = isZero ? "=" : (dir === "to-vk" ? "V" : "C");
+      if(sat) sat.textContent = dir === "to-vk" ? "C" : "V";
+      const parts = [balance.half, balance.debt, balance.third];
+      const vals = parts.map(v => Math.abs(v));
+      const sum = vals.reduce((x, y) => x + y, 0);
+      ["orbD1", "orbD2", "orbD3"].forEach((id, k) => {
+        const el = document.getElementById(id);
+        if(el) el.style.setProperty("--r", sum > 0 ? (3.5 + 9 * Math.sqrt(vals[k] / sum)).toFixed(1) : "3.5"); // đường kính chấm = --r % khung
+      });
+      // Khối tổng hợp (hiện khi mở chi tiết): thanh cơ cấu + phép cộng 3 khoản. Dấu tính THEO chiều đang hiển thị, để phép cộng
+      // luôn ra đúng số to ở trên (kể cả khi là "Chồng đang nợ Vợ", lúc đó các khoản gốc đều âm).
+      [1, 2, 3].forEach((n, k) => {
+        const s = document.getElementById("orbB" + n);
+        if(s) s.style.setProperty("--g", sum > 0 ? vals[k] : 1);
+      });
+      const eqEl = document.getElementById("orbEq");
+      if(eqEl){
+        const sgn = (!isZero && balance.net < 0) ? -1 : 1;
+        const fmt = (v) => money(Math.abs(v)).replace(/\s*\u20ab$/, "");
+        let eq = "";
+        parts.forEach((v, k) => {
+          const sv = v * sgn;
+          eq += (k === 0 ? (sv < 0 ? "\u2212" : "") : (sv < 0 ? " \u2212 " : " + ")) + fmt(v);
+        });
+        eqEl.textContent = eq;
+      }
+    })();
 
     animateValue(document.getElementById("grandTotal"), grandTotal);
     animateValue(document.getElementById("entryCount"), entries.length, (v) => String(Math.round(v)));
@@ -5240,6 +5287,7 @@
     const isOpen = document.getElementById("infoBox").classList.toggle("show");
     btn.classList.toggle("open", isOpen);
     btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    refreshBalanceAria();
     const hintTxt = document.getElementById("balanceHintText");
     if(hintTxt) hintTxt.textContent = isOpen ? "Thu gọn chi tiết" : "Xem chi tiết cách tính";
   });

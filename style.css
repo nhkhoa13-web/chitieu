@@ -397,7 +397,7 @@
     border-radius:16px; border:1px solid transparent; overflow:hidden; margin-bottom:2px;
     transition:background .4s ease, border-color .4s ease, filter .15s ease;
   }
-  .balance-card:has(.balance-spotlight:hover){ filter:brightness(1.06); }
+  @media (hover:hover){ .balance-card:has(.balance-spotlight:hover){ filter:brightness(1.06); } }
   .balance-card:has(.balance-spotlight:active){ filter:brightness(0.97); }
   .balance-card.to-chong{ background:linear-gradient(160deg, rgba(var(--chong-rgb),0.16), rgba(var(--chong-rgb),0.07)); border-color:rgba(var(--chong-rgb),0.35); }
   .balance-card.to-vk{ background:linear-gradient(160deg, rgba(var(--vk-rgb),0.16), rgba(var(--vk-rgb),0.07)); border-color:rgba(var(--vk-rgb),0.35); }
@@ -1588,33 +1588,6 @@ html[data-theme="light"] .balance-card::before{
 .balance-main{ display:flex; align-items:center; justify-content:space-between; gap:10px 14px; flex-wrap:wrap; }
 .balance-main .balance-number{ margin:0; min-width:0; }
 
-.balance-flow{ display:flex; align-items:flex-start; gap:6px; margin-left:auto; flex-shrink:0; }
-.bf-node{ display:flex; flex-direction:column; align-items:center; gap:4px; width:42px; opacity:.6; transition:opacity .4s ease; }
-.bf-node i{
-  font-style:normal; width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
-  font-size:13.5px; font-weight:700; border:1.5px solid currentColor;
-}
-.bf-node small{ font-size:8.5px; font-weight:700; letter-spacing:.06em; color:var(--text-dim); }
-.bf-vk{ color:var(--vk-soft); } .bf-vk i{ background:rgba(var(--vk-rgb),0.14); }
-.bf-ck{ color:var(--chong-soft); } .bf-ck i{ background:rgba(var(--chong-rgb),0.14); }
-/* bên NHẬN tiền sáng rõ + vòng hào quang */
-.balance-card.to-chong .bf-ck, .balance-card.to-vk .bf-vk{ opacity:1; }
-.balance-card.to-chong .bf-ck i{ box-shadow:0 0 0 4px rgba(var(--chong-rgb),0.15), 0 0 16px rgba(var(--chong-rgb),0.4); }
-.balance-card.to-vk .bf-vk i{ box-shadow:0 0 0 4px rgba(var(--vk-rgb),0.15), 0 0 16px rgba(var(--vk-rgb),0.4); }
-.balance-card.zero .bf-node{ opacity:.85; }
-/* đổi chiều: Chồng nợ Vợ thì Chồng ở bên trái, mũi tên chạy sang phải về phía Vợ */
-.balance-card.to-vk .balance-flow{ flex-direction:row-reverse; }
-
-.bf-track{ display:flex; align-items:center; justify-content:center; gap:3px; height:32px; width:34px; color:var(--dir); }
-.bf-c{
-  width:7px; height:7px; border-top:2px solid currentColor; border-right:2px solid currentColor;
-  transform:rotate(45deg); opacity:.25; animation:bfFlow 1.5s ease-in-out infinite;
-}
-.bf-c:nth-child(2){ animation-delay:.2s; } .bf-c:nth-child(3){ animation-delay:.4s; }
-.bf-eq{ display:none; font-style:normal; font-weight:700; font-size:16px; }
-.balance-card.zero .bf-c{ display:none; }
-.balance-card.zero .bf-eq{ display:block; }
-@keyframes bfFlow{ 0%,100%{ opacity:.2; } 40%{ opacity:1; } }
 
 /* 3 ô thành phần */
 .balance-chips{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
@@ -1645,15 +1618,10 @@ html[data-theme="light"] .balance-card::before{
 
 @media (max-width:480px){
   .balance-spotlight{ padding:14px 14px 12px; }
-  .bf-node{ width:38px; } .bf-node i{ width:30px; height:30px; font-size:13px; }
-  .bf-track{ width:28px; height:30px; gap:2px; }
   .balance-chips{ gap:6px; }
   .bchip{ padding:7px 8px 7px 11px; } .bchip b{ font-size:11.5px; } .bchip small{ font-size:9.5px; }
 }
-/* tiết kiệm pin / giảm chuyển động: dừng mũi tên chạy, giữ trạng thái sáng đều */
-html[data-perf="lite"] .bf-c{ animation:none; opacity:.8; }
 html[data-perf="lite"] .balance-card::before{ transition:none; }
-@media (prefers-reduced-motion:reduce){ .bf-c{ animation:none; opacity:.8; } }
 
 /* Thu gọn: hiện đủ 3 ô thành phần. Mở "chi tiết cách tính": ẩn 3 ô (vì bảng chi tiết đã có đủ số liệu này) */
 .balance-spotlight.open .balance-chips{ display:none; }
@@ -2065,3 +2033,108 @@ html[data-perf="lite"] .entry-added, html[data-perf="lite"] .amount-hero.shake{ 
   .amount-hero.shake, .entry-added{ animation:none; }
   .akey, .cat-pill, .date-chip, .suggest-chip, .keep-switch, .keep-switch::after{ transition:none; }
 }
+
+
+/* ============ THẺ SỐ DƯ — "Quỹ đạo" ============
+   Người NHẬN tiền ở tâm (phát sáng), người TRẢ là vệ tinh nối bằng dòng chấm chảy vào tâm.
+   3 chấm quay trên 3 quỹ đạo = Trả hộ / Ghi nợ / Chung, to nhỏ theo tỉ trọng từng khoản.
+   MƯỢT + NHẸ: các chấm quay là phần tử HTML trên lớp riêng (will-change:transform) nên GPU tự quay ở 60 khung/giây, không bắt
+   trình duyệt vẽ lại SVG mỗi khung; không dùng filter (quầng sáng là gradient tĩnh). Tự dừng khi cuộn khỏi màn hình /
+   bị hộp thoại che / bật "Tiết kiệm pin" / máy bật "giảm chuyển động". */
+.balance-card{ border-radius:26px; }
+.balance-spotlight{ padding:18px 18px 16px; }
+.balance-label-row{ margin-bottom:12px; }
+.balance-label{ font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--dir); }
+.balance-main{ display:block; }
+.balance-main .balance-number{ display:block; font-size:clamp(36px,13vw,58px); line-height:1; letter-spacing:-0.03em; }
+.bn-unit{ font-family:var(--sans); font-size:.34em; font-weight:600; opacity:.65; margin-left:.28em; vertical-align:.95em; letter-spacing:0; }
+
+.balance-chips{ margin-top:10px; gap:8px; }
+.balance-card .bchip{ box-shadow:none; padding:10px 12px; border-radius:14px; border-color:color-mix(in srgb,var(--c) 28%,var(--border)); background:color-mix(in srgb,var(--c) 7%,var(--tile)); }
+.bchip small::before{ content:""; display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:var(--c); vertical-align:1px; }
+.balance-card .bchip b{ font-size:14px; }
+.balance-card .bchip.zero{ opacity:.6; border-color:var(--border); background:var(--tile); }
+@media (max-width:480px){
+  .balance-spotlight{ padding:16px 14px 14px; }
+  .balance-card .bchip b{ font-size:12.5px; }
+}
+
+.balance-card{ --opp:var(--text-dim); --opp-rgb:var(--zero-rgb); }
+.balance-card.to-chong{ --opp:var(--vk-soft); --opp-rgb:var(--vk-rgb); }
+.balance-card.to-vk{ --opp:var(--chong-soft); --opp-rgb:var(--chong-rgb); }
+.orb-wrap{ display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:14px; }
+.orb{ position:relative; width:176px; height:176px; flex:none; }
+.orb-svg{ position:absolute; inset:0; width:100%; height:100%; display:block; overflow:visible; }
+.orb-svg-top{ pointer-events:none; }
+.orb-ring{ fill:none; stroke:var(--border2); stroke-width:1; stroke-dasharray:2 5; }
+.orb-glow{ fill:url(#orbGlow); pointer-events:none; }
+.orb-halo{ fill:none; stroke:rgba(var(--dir-rgb),0.3); stroke-width:1.2; }
+.orb-core{ fill:rgba(var(--dir-rgb),0.16); stroke:var(--dir); stroke-width:1.6; }
+.orb-core-t{ fill:var(--dir); font:700 22px var(--sans); }
+.orb-sat circle{ fill:rgba(var(--opp-rgb),0.2); stroke:var(--opp); stroke-width:1.5; }
+.orb-sat text{ fill:var(--opp); font:700 12px var(--sans); }
+.orb-flow{ fill:none; stroke:var(--dir); stroke-width:2; stroke-linecap:round; stroke-dasharray:2 6; opacity:.55; }
+.balance-card.zero .orb-sat, .balance-card.zero .orb-flow{ display:none; }
+/* Chấm quay: "cánh tay" phủ kín khung quỹ đạo, quay quanh tâm; chấm đặt sẵn ở bán kính của nó (tính theo % khung) */
+.orb-arm{ position:absolute; inset:0; pointer-events:none; will-change:transform; }
+.orb-a1{ animation:orbSpin 38s linear infinite; }
+.orb-a2{ animation:orbSpin 52s linear infinite reverse; }
+.orb-a3{ animation:orbSpin 70s linear infinite; }
+@keyframes orbSpin{ to{ transform:rotate(360deg); } }
+.orb-dot{
+  position:absolute; left:calc(50% + var(--x)); top:calc(50% + var(--y));
+  width:calc(var(--r) * 1%); height:calc(var(--r) * 1%); transform:translate(-50%,-50%); border-radius:50%;
+  background:var(--dc); box-shadow:0 0 9px color-mix(in srgb, var(--dc) 55%, transparent);
+  transition:width .6s var(--ease-out), height .6s var(--ease-out);
+}
+/* Điểm sáng chảy từ vệ tinh (34,66) vào lõi (70,85): đường dài 20,4% khung, nghiêng 27,8°. Chỉ dịch chuyển bằng transform + opacity. */
+.orb-flowtrack{ position:absolute; left:17%; top:33%; width:20.4%; height:0; transform-origin:0 0; transform:rotate(27.8deg); pointer-events:none; }
+.orb-flowdot{
+  position:absolute; right:100%; top:-1.5px; width:100%; height:3px; will-change:transform, opacity;
+  background:linear-gradient(90deg, transparent 55%, rgba(var(--dir-rgb),0.65));
+  animation:orbFlow 1.8s linear infinite;
+}
+.orb-flowdot::after{ content:""; position:absolute; right:-3px; top:50%; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--dir); box-shadow:0 0 8px rgba(var(--dir-rgb),0.9); }
+.orb-flowdot.d2{ animation-delay:-.9s; }
+@keyframes orbFlow{ 0%{ transform:translateX(0); opacity:0; } 14%{ opacity:1; } 86%{ opacity:1; } 100%{ transform:translateX(100%); opacity:0; } }
+.balance-card.zero .orb-flowtrack{ display:none; }
+html.anim-paused .orb *, .orb.offscreen *{ animation-play-state:paused !important; }
+.orb-side{ min-width:0; display:flex; flex-direction:column; gap:14px; }
+.orb-side .balance-main{ display:block; }
+.orb-side .balance-main::before{ left:-10px; width:100%; height:200%; }
+.orb-side .balance-main .balance-number{ font-size:clamp(22px,8vw,34px); }
+.orb-side .balance-chips{ display:flex; flex-direction:column; gap:8px; margin:0; }
+.balance-card .orb-side .bchip{ flex-direction:row; align-items:center; gap:8px; padding:0; border:0; background:none; box-shadow:none; border-radius:0; opacity:1; overflow:visible; }
+.orb-side .bchip small{ flex:1; min-width:0; font-size:11.5px; color:var(--text-muted); font-weight:500; }
+.orb-side .bchip small::before{ background:var(--id); }
+.balance-card .orb-side .bchip b{ font-size:13.5px; flex:none; }
+.balance-card .orb-side .bchip.zero{ opacity:.55; }
+.balance-spotlight.open .balance-chips{ display:none; }
+@media (max-width:480px){
+  .orb{ width:138px; height:138px; }
+  .orb-wrap{ gap:10px; }
+  .orb-side{ gap:11px; }
+  .balance-card .orb-side .bchip b{ font-size:12.5px; }
+  .orb-side .bchip small{ font-size:10.5px; }
+}
+html[data-perf="lite"] .orb-arm{ animation:none; will-change:auto; }
+html[data-perf="lite"] .orb-flowdot{ display:none; }
+html[data-perf="lite"] .orb-dot{ transition:none; }
+@media (prefers-reduced-motion:reduce){ .orb-arm{ animation:none; will-change:auto; } .orb-flowdot{ display:none; } .orb-dot{ transition:none; } }
+
+/* Mở "chi tiết cách tính": cột phải có thêm thanh cơ cấu 3 khoản + phép cộng ngay dưới số tiền */
+.orb-sum{ display:none; }
+.balance-spotlight.open .orb-sum{ display:flex; flex-direction:column; gap:9px; }
+.orb-bar{ display:flex; gap:3px; height:7px; }
+.orb-bar i{ flex:var(--g,1) 1 6px; min-width:6px; border-radius:6px; background:var(--id); transition:flex-grow .6s var(--ease-out); }
+.orb-eq{ font-size:11.5px; line-height:1.4; color:var(--text-muted); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.balance-spotlight.open .orb-side .balance-main::before{ height:140%; }
+html[data-perf="lite"] .orb-bar i{ transition:none; }
+@media (prefers-reduced-motion:reduce){ .orb-bar i{ transition:none; } }
+
+/* ============ Khối "chi tiết cách tính": khoảng cách giữa 3 hộp ============
+   3 hộp nằm trong .info-inner nên khoảng cách phải đặt ở ĐÂY (gap đặt ở .info-box chỉ có tác dụng giữa .info-inner và phần tử anh em của nó,
+   không tách được 3 hộp ra -> chúng dính nhau). */
+.info-inner{ display:flex; flex-direction:column; gap:10px; min-width:0; }
+.info-inner > .info-note{ margin-top:4px; }
+@media (max-width:480px){ .info-inner{ gap:8px; } }

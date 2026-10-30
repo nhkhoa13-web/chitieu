@@ -277,18 +277,51 @@
               <span class="balance-label" id="ownerLabel">Đã cân bằng</span>
               <svg class="chev balance-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
             </div>
-            <div class="balance-main">
-              <div class="balance-number" id="balanceNumber">0 ₫</div>
-              <div class="balance-flow" aria-hidden="true">
-                <span class="bf-node bf-vk"><i>V</i><small>VỢ</small></span>
-                <span class="bf-track"><b class="bf-c"></b><b class="bf-c"></b><b class="bf-c"></b><em class="bf-eq">=</em></span>
-                <span class="bf-node bf-ck"><i>C</i><small>CHỒNG</small></span>
+            <div class="orb-wrap">
+              <div class="orb" aria-hidden="true">
+                <!-- Lớp dưới (tĩnh): vòng quỹ đạo, quầng sáng, đường nối, lõi -->
+                <svg class="orb-svg" viewBox="0 0 200 200">
+                  <defs>
+                    <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" style="stop-color:var(--dir);stop-opacity:.34"/>
+                      <stop offset="55%" style="stop-color:var(--dir);stop-opacity:.11"/>
+                      <stop offset="100%" style="stop-color:var(--dir);stop-opacity:0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle class="orb-ring" cx="100" cy="100" r="88"/>
+                  <circle class="orb-ring" cx="100" cy="100" r="66"/>
+                  <circle class="orb-ring" cx="100" cy="100" r="46"/>
+                  <circle class="orb-glow" cx="100" cy="100" r="62"/>
+                  <path class="orb-flow" d="M34 66L70 85"/>
+                  <circle class="orb-halo" cx="100" cy="100" r="41"/>
+                  <circle class="orb-core" cx="100" cy="100" r="30"/>
+                  <text class="orb-core-t" id="orbCoreT" x="100" y="108" text-anchor="middle">C</text>
+                </svg>
+                <!-- 3 chấm quay: mỗi chấm nằm trong 1 "cánh tay" HTML được GPU tự quay (transform) -> mượt 60 khung/giây, gần như không tốn CPU -->
+                <span class="orb-arm orb-a1"><i class="orb-dot" id="orbD1" style="--x:19.9%;--y:-11.5%;--r:8;--dc:var(--chong-soft)"></i></span>
+                <span class="orb-arm orb-a2"><i class="orb-dot" id="orbD2" style="--x:-31%;--y:-11.3%;--r:11;--dc:var(--gold)"></i></span>
+                <span class="orb-arm orb-a3"><i class="orb-dot" id="orbD3" style="--x:22%;--y:38.1%;--r:4;--dc:var(--text-dim)"></i></span>
+                <!-- Điểm sáng chảy từ vệ tinh vào lõi (người trả -> người nhận) -->
+                <span class="orb-flowtrack"><i class="orb-flowdot"></i><i class="orb-flowdot d2"></i></span>
+                <!-- Lớp trên: vệ tinh (luôn nằm trên các chấm quay) -->
+                <svg class="orb-svg orb-svg-top" viewBox="0 0 200 200">
+                  <g class="orb-sat"><circle cx="22" cy="60" r="13"/><text id="orbSatT" x="22" y="65" text-anchor="middle">V</text></g>
+                </svg>
               </div>
-            </div>
-            <div class="balance-chips">
-              <span class="bchip" id="chipHalf"><small>Trả hộ · chia 2</small><b>0 ₫</b></span>
-              <span class="bchip" id="chipDebt"><small>Ghi nợ</small><b>0 ₫</b></span>
-              <span class="bchip" id="chipThird"><small>Chung · chia 3</small><b>0 ₫</b></span>
+              <div class="orb-side">
+                <div class="balance-main">
+                  <div class="balance-number" id="balanceNumber">0 ₫</div>
+                </div>
+                <div class="balance-chips">
+                  <span class="bchip" id="chipHalf" style="--id:var(--chong-soft)"><small>Trả hộ · chia 2</small><b>0 ₫</b></span>
+                  <span class="bchip" id="chipDebt" style="--id:var(--gold)"><small>Ghi nợ</small><b>0 ₫</b></span>
+                  <span class="bchip" id="chipThird" style="--id:var(--text-dim)"><small>Chung · chia 3</small><b>0 ₫</b></span>
+                </div>
+                <div class="orb-sum" aria-hidden="true">
+                  <div class="orb-bar"><i id="orbB1" style="--id:var(--chong-soft)"></i><i id="orbB2" style="--id:var(--gold)"></i><i id="orbB3" style="--id:var(--text-dim)"></i></div>
+                  <div class="orb-eq" id="orbEq"></div>
+                </div>
+              </div>
             </div>
           </button>
           <div class="info-box" id="infoBox">
